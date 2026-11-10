@@ -10,6 +10,8 @@ Every scenario has its own URL, so you can send a link straight to one:
 |---|---|
 | Diagonal 45° | https://potocpav.github.io/parking-simulator/#/play/diagonal-45 |
 | Diagonal 60°, reverse | https://potocpav.github.io/parking-simulator/#/play/diagonal-60-reverse |
+| Two-point turn | https://potocpav.github.io/parking-simulator/#/play/two-point-turn |
+| Multi-point turn | https://potocpav.github.io/parking-simulator/#/play/multi-point-turn |
 | Reverse into a bay | https://potocpav.github.io/parking-simulator/#/play/perpendicular-reverse |
 | Nose-in bay | https://potocpav.github.io/parking-simulator/#/play/perpendicular-forward |
 | Parallel parking | https://potocpav.github.io/parking-simulator/#/play/parallel-easy |

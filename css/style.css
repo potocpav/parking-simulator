@@ -41,11 +41,11 @@ kbd {
 h1 { margin: 0; font-size: 28px; letter-spacing: -.01em; }
 .tagline { margin: 2px 0 0; color: var(--muted); }
 .menu-title { flex: 1 1 0; min-width: 0; }
-.header-links { margin-left: auto; display: flex; align-items: center; gap: 14px; flex: none; }
+.header-links { margin-left: auto; display: flex; align-items: center; gap: 12px; flex: none; }
 .header-links a { color: var(--muted); text-decoration: none; }
 .header-links a:hover { color: var(--text); }
-.header-links .author { font-size: 14px; }
-.header-links .author:hover { text-decoration: underline; }
+.header-links .author { font-size: 15px; line-height: 1; color: var(--muted); }
+.header-links .author:hover { color: var(--muted); text-decoration: underline; }
 .header-links .gh {
   width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
   border: 1px solid #343b47; background: var(--card);

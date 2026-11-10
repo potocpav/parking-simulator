@@ -62,7 +62,6 @@ function streetScenario({ id, title, description, difficulty, gap, gapStart, see
   const rand = mulberry32(seed);
   const W = 40, H = 16;
   const gapEnd = gapStart + gap;
-  const laneY = 12.2;
   const scenery = [
     rect(W / 2, 1.25, W, 2.5, C.sidewalk),
     rect(W / 2, 8, W, 10.6, C.asphalt),
@@ -74,7 +73,22 @@ function streetScenario({ id, title, description, difficulty, gap, gapStart, see
   for (let x = 4; x < W; x += 9) scenery.push(tree(x + rand() * 2, 15.0, 1.0 + rand() * 0.2));
   for (let x = 2; x < W; x += 11) scenery.push(tree(x + rand() * 2, 1.0, 0.9 + rand() * 0.2));
 
-  const obstacles = [curb(W / 2, 2.6, W, 0.2), curb(W / 2, 13.4, W, 0.2)];
+  const obstacles = [curb(W / 2, 2.6, W, 0.2), curb(W / 2, 13.4, W, 0.2), ...streetCars(rand, W, gapStart, gapEnd)];
+  return {
+    id, title, description, difficulty,
+    bounds: { x: 0, y: 0, w: W, h: H },
+    bg: C.grass,
+    start: { x: 5, y: 9.55, angle: 0 },
+    targets: [{ x: (gapStart + gapEnd) / 2, y: 12.15, w: gap - 0.1, h: 2.3, angle: 0, headings: [0], tol: 6 }],
+    obstacles,
+    scenery,
+  };
+}
+
+/** Parked cars of the parallel-parking street: a packed right-hand row with one gap, and sparse cars opposite. */
+function streetCars(rand, W, gapStart, gapEnd) {
+  const laneY = 12.2;
+  const obstacles = [];
   // Cars behind the gap.
   let pos = gapStart;
   while (pos > -3) {
@@ -95,12 +109,57 @@ function streetScenario({ id, title, description, difficulty, gap, gapStart, see
   for (let x = 3; x < W; x += 5.5 + rand() * 6) {
     obstacles.push(parkedCar(rand, x, 3.8, PI, { jitter: 0.05, angJitter: 1.5 }));
   }
+  return obstacles;
+}
+
+// ---------------------------------------------------------------- street turn-around
+
+/**
+ * Two-lane street with cars parked along both curbs (same cross-section as the parallel scenarios).
+ * gaps: { top: [[x0, x1], ...], bottom: [...] } – free curb space; elsewhere cars are packed with
+ * `spacing` = [min, max] metres between them.
+ */
+function turnAroundScenario({ id, title, description, difficulty, gaps, spacing, parallelLayout, seed }) {
+  const rand = mulberry32(seed);
+  const W = 40, H = 16;
+  const scenery = [
+    rect(W / 2, 1.25, W, 2.5, C.sidewalk),
+    rect(W / 2, 8, W, 10.6, C.asphalt),
+    rect(W / 2, 14.75, W, 2.5, C.sidewalk),
+    line([[0, 8], [W, 8]], C.paint, 0.12, [3, 3]),
+    line([[0, 11.1], [W, 11.1]], 'rgba(236,239,241,0.55)', 0.1, [0.5, 0.5]),
+    line([[0, 4.9], [W, 4.9]], 'rgba(236,239,241,0.55)', 0.1, [0.5, 0.5]),
+  ];
+  for (const x of [17, 31]) scenery.push({ type: 'arrow', x, y: 9.55, angle: 0, len: 2.4 });
+  for (const x of [22, 34]) scenery.push({ type: 'arrow', x, y: 6.45, angle: PI, len: 2.4 });
+  for (let x = 4; x < W; x += 9) scenery.push(tree(x + rand() * 2, 15.0, 1.0 + rand() * 0.2));
+  for (let x = 2; x < W; x += 11) scenery.push(tree(x + rand() * 2, 1.0, 0.9 + rand() * 0.2));
+
+  const obstacles = [curb(W / 2, 2.6, W, 0.2), curb(W / 2, 13.4, W, 0.2)];
+  const fillRow = (y, angle, rowGaps) => {
+    let pos = -3;
+    while (pos < W + 3) {
+      const c = parkedCar(rand, 0, y, angle, { jitter: 0.05, angJitter: 1.5 });
+      const g = rowGaps.find(([g0, g1]) => pos < g1 && pos + c.w > g0);
+      if (g) { pos = g[1]; continue; }
+      c.x = pos + c.w / 2;
+      obstacles.push(c);
+      pos += c.w + spacing[0] + rand() * (spacing[1] - spacing[0]);
+    }
+  };
+  if (parallelLayout) {
+    // Same parked cars as the parallel-parking street (identical with the same seed).
+    obstacles.push(...streetCars(rand, W, parallelLayout.gapStart, parallelLayout.gapStart + parallelLayout.gap));
+  } else {
+    fillRow(3.8, PI, gaps.top || []);
+    fillRow(12.2, 0, gaps.bottom || []);
+  }
   return {
     id, title, description, difficulty,
     bounds: { x: 0, y: 0, w: W, h: H },
     bg: C.grass,
     start: { x: 5, y: 9.55, angle: 0 },
-    targets: [{ x: (gapStart + gapEnd) / 2, y: 12.15, w: gap - 0.1, h: 2.3, angle: 0, headings: [0], tol: 6 }],
+    targets: [{ x: 5.5, y: 6.45, w: 9, h: 3.0, angle: 0, headings: [PI], tol: 12, requireStop: false }],
     obstacles,
     scenery,
   };
@@ -340,6 +399,16 @@ export const SCENARIOS = [
     id: 'diagonal-60-reverse', title: 'Diagonal 60°, reverse', difficulty: 'Medium',
     description: 'Pass the free bay, then reverse into it at 60°.',
     alphaDeg: -120, entry: 'reverse', targetIndex: 5, seed: 37,
+  }),
+  turnAroundScenario({
+    id: 'two-point-turn', title: 'Two-point turn', difficulty: 'Medium',
+    description: 'Turn around on a street with parked cars. Use the gaps to turn with a single reverse, then drive back to the box.',
+    parallelLayout: { gap: 5.8, gapStart: 17 }, seed: 23, // same cars as "Tight parallel"
+  }),
+  turnAroundScenario({
+    id: 'multi-point-turn', title: 'Multi-point turn', difficulty: 'Hard',
+    description: 'Turn around on a street lined with parked cars. The gaps are too small to use, so it takes several shunts.',
+    gaps: {}, spacing: [1.1, 1.6], seed: 43,
   }),
   lotScenario({
     id: 'perpendicular-reverse', title: 'Reverse into a bay', difficulty: 'Medium',
