@@ -148,10 +148,10 @@ export function drawGround(ctx, scenario) {
 
 // ---------------------------------------------------------------- obstacles
 
-function drawObstacle(ctx, o) {
+function drawObstacle(ctx, o, broken) {
   switch (o.type) {
     case 'car':
-      drawCar(ctx, { x: o.x, y: o.y, angle: o.angle, length: o.w, width: o.h, color: o.color });
+      drawCar(ctx, { x: o.x, y: o.y, angle: o.angle, length: o.w, width: o.h, color: o.color, broken });
       break;
     case 'curb':
       withRect(ctx, o, (hw, hh) => {
@@ -206,15 +206,22 @@ function drawObstacle(ctx, o) {
   }
 }
 
-export function drawObstacles(ctx, scenario) {
-  for (const o of scenario.obstacles) drawObstacle(ctx, o);
+/** brokenLights: optional Map obstacle index → Set of broken light ids. */
+export function drawObstacles(ctx, scenario, brokenLights = null) {
+  scenario.obstacles.forEach((o, i) => drawObstacle(ctx, o, brokenLights?.get(i)));
 }
 
 /** Scratches and a small dent where a parked car was bumped (clipped to its body). */
 export function drawScars(ctx, scenario, scars) {
   for (const sc of scars) {
     const o = scenario.obstacles[sc.index];
-    if (!o) continue;
+    if (o) drawScar(ctx, o, sc);
+  }
+}
+
+/** One scar in the frame of a car-shaped rect { x, y, angle, w, h } (clipped to it). */
+export function drawScar(ctx, o, sc) {
+  {
     ctx.save();
     ctx.translate(o.x, o.y);
     ctx.rotate(o.angle || 0);
@@ -253,6 +260,17 @@ export function drawScars(ctx, scenario, scars) {
 }
 
 // ---------------------------------------------------------------- car
+
+const NO_BROKEN = new Set();
+
+/** Light centres in a car's body frame (x forward, y right): FL/FR head lights, RL/RR tail lights. */
+export function lightPositions(length, width) {
+  const hl = length / 2, hw = width / 2;
+  return {
+    FL: [hl - 0.17, -(hw - 0.3)], FR: [hl - 0.17, hw - 0.3],
+    RL: [-hl + 0.08, -(hw - 0.3)], RR: [-hl + 0.08, hw - 0.3],
+  };
+}
 
 /**
  * Draw a top-down hatchback centred on (x, y), nose pointing along `angle`.
@@ -372,19 +390,41 @@ export function drawCar(ctx, o) {
     ctx.stroke();
   }
 
-  // Head lights
-  ctx.fillStyle = '#fff8d6';
-  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-  ctx.lineWidth = 0.02;
-  for (const s of [-1, 1]) {
+  // Lights. A broken one (o.broken has 'FL' | 'FR' | 'RL' | 'RR') is dark, cracked and never lit.
+  const broken = o.broken || NO_BROKEN;
+  const crack = (x, y, r) => {
+    ctx.strokeStyle = 'rgba(210,210,210,0.75)';
+    ctx.lineWidth = 0.018;
     ctx.beginPath();
-    ctx.ellipse(hl - 0.17, s * (hw - 0.3), 0.08, 0.2, s * 0.35, 0, Math.PI * 2);
+    ctx.moveTo(x - r, y - r * 1.6); ctx.lineTo(x + r * 0.2, y - r * 0.2); ctx.lineTo(x - r * 0.4, y + r * 0.6);
+    ctx.lineTo(x + r * 0.5, y + r * 1.6);
+    ctx.moveTo(x + r * 0.2, y - r * 0.2); ctx.lineTo(x + r, y - r * 0.5);
+    ctx.stroke();
+  };
+
+  // Head lights
+  for (const s of [-1, 1]) {
+    const isBroken = broken.has(s < 0 ? 'FL' : 'FR');
+    const lx = hl - 0.17, ly = s * (hw - 0.3);
+    ctx.fillStyle = isBroken ? '#2f3133' : '#fff8d6';
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 0.02;
+    ctx.beginPath();
+    ctx.ellipse(lx, ly, 0.08, 0.2, s * 0.35, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+    if (isBroken) crack(lx, ly, 0.07);
   }
 
   // Tail lights
   for (const s of [-1, 1]) {
+    if (broken.has(s < 0 ? 'RL' : 'RR')) {
+      ctx.fillStyle = '#3a2222';
+      roundRectPath(ctx, -hl + 0.02, s > 0 ? hw - 0.5 : -hw + 0.1, 0.12, 0.4, 0.04);
+      ctx.fill();
+      crack(-hl + 0.08, s * (hw - 0.3), 0.08);
+      continue; // no brake glow, no reversing light on this side
+    }
     ctx.fillStyle = o.brake ? '#ff3b3b' : '#9e1c1c';
     roundRectPath(ctx, -hl + 0.02, s > 0 ? hw - 0.5 : -hw + 0.1, 0.12, 0.4, 0.04);
     ctx.fill();
@@ -399,7 +439,7 @@ export function drawCar(ctx, o) {
       ctx.fillRect(-hl + 0.02, s * (hw - 0.62) - 0.06, 0.1, 0.12);
     }
   }
-  if (o.reverse) {
+  if (o.reverse && !(broken.has('RL') && broken.has('RR'))) {
     const rg2 = ctx.createRadialGradient(-hl, 0, 0.1, -hl, 0, 1.6);
     rg2.addColorStop(0, 'rgba(255,255,240,0.22)');
     rg2.addColorStop(1, 'rgba(255,255,240,0)');

@@ -2,7 +2,7 @@
 import { CAR, advance, bodyRect, centerToRear, predictPath, wheelPositions, wrapAngle } from './car.js';
 import { contactPoint, corners, pointInRect, rayRect, rectsOverlap } from './collision.js';
 import {
-  applyCamera, drawCar, drawCrashMarkers, drawGround, drawObstacles, drawPaths, drawScars,
+  applyCamera, drawCar, drawCrashMarkers, drawGround, drawObstacles, drawPaths, drawScar, drawScars, lightPositions,
   drawScenery, drawSensorArcs, drawTargets, followZoom, SENSOR_RANGE,
 } from './render.js';
 
@@ -15,6 +15,36 @@ const PREDICT_DIST = 1.5;
 const TOP_BAR = 56;
 const TRUNK = 0.6;                         // tree trunk collision size (m)
 const DRIVABLE = new Set(['curb', 'island']); // obstacle types the car can drive over
+
+/**
+ * A scar for a hit at world point (x, y) on rect o ({ x, y, hw, hh, angle }): stored in o's local
+ * frame, snapped just inside the nearest body edge, scratches running along that edge.
+ */
+function makeScar(o, x, y, speed) {
+  const c = Math.cos(o.angle), s = Math.sin(o.angle);
+  const dx = x - o.x, dy = y - o.y;
+  let lx = dx * c + dy * s, ly = -dx * s + dy * c;
+  let along;
+  if (o.hw - Math.abs(lx) < o.hh - Math.abs(ly)) {
+    lx = Math.sign(lx || 1) * (o.hw - 0.18);
+    ly = Math.max(-o.hh + 0.1, Math.min(o.hh - 0.1, ly));
+    along = Math.PI / 2;
+  } else {
+    ly = Math.sign(ly || 1) * (o.hh - 0.16);
+    lx = Math.max(-o.hw + 0.1, Math.min(o.hw - 0.1, lx));
+    along = 0;
+  }
+  return { lx, ly, along, size: Math.min(1.0, 0.55 + speed * 0.15), seed: Math.random() * 1000 };
+}
+
+/** Break every light of car-rect r ({ x, y, hw, hh, angle }) within 0.5 m of the hit at (x, y). */
+function breakLights(r, x, y, set) {
+  const c = Math.cos(r.angle), s = Math.sin(r.angle);
+  const lx = (x - r.x) * c + (y - r.y) * s, ly = -(x - r.x) * s + (y - r.y) * c;
+  for (const [id, [px, py]] of Object.entries(lightPositions(r.hw * 2, r.hh * 2))) {
+    if (Math.hypot(lx - px, ly - py) < 0.5) set.add(id);
+  }
+}
 
 const toRect = (o) => ({ x: o.x, y: o.y, hw: o.w / 2, hh: o.h / 2, angle: o.angle || 0, type: o.type });
 
@@ -84,6 +114,9 @@ export class Game {
     this.moveDir = 0;   // direction of the last actual movement (0 = not moved yet)
     this.markers = [];
     this.scars = []; // permanent scratches on bumped parked cars (cleared on reset)
+    this.playerScars = []; // scratches on the player's car
+    this.brokenLights = new Set();   // player's broken lights
+    this.brokenParked = new Map();   // obstacle index → Set of broken light ids
     this.blockedDir = 0;
     this.distSinceBlock = 0;
     this.trail = [wheelPositions(this.pose)];
@@ -183,6 +216,12 @@ export class Game {
           if (m) { m.life = 1; m.touching = true; }
           else this.markers.push({ x, y, life: 1, touching: true });
           if (o.type === 'car') this.addScar(o.idx, o, x, y, Math.abs(this.v));
+          this.addPlayerScar(body, x, y, Math.abs(this.v));
+          breakLights(body, x, y, this.brokenLights);
+          if (o.type === 'car') {
+            if (!this.brokenParked.has(o.idx)) this.brokenParked.set(o.idx, new Set());
+            breakLights(o, x, y, this.brokenParked.get(o.idx));
+          }
         }
         this.blockedDir = dir;
         this.distSinceBlock = 0;
@@ -241,25 +280,16 @@ export class Game {
 
   /** Record a scar on a parked car, in that car's local frame, snapped to the nearest body edge. */
   addScar(index, o, x, y, speed) {
-    const c = Math.cos(o.angle), s = Math.sin(o.angle);
-    const dx = x - o.x, dy = y - o.y;
-    let lx = dx * c + dy * s, ly = -dx * s + dy * c;
-    let along; // scratch direction in local frame
-    if (o.hw - Math.abs(lx) < o.hh - Math.abs(ly)) {
-      lx = Math.sign(lx || 1) * (o.hw - 0.18);
-      ly = Math.max(-o.hh + 0.1, Math.min(o.hh - 0.1, ly));
-      along = Math.PI / 2;
-    } else {
-      ly = Math.sign(ly || 1) * (o.hh - 0.16);
-      lx = Math.max(-o.hw + 0.1, Math.min(o.hw - 0.1, lx));
-      along = 0;
-    }
-    if (this.scars.some((sc) => sc.index === index && Math.hypot(sc.lx - lx, sc.ly - ly) < 0.25)) return;
-    this.scars.push({
-      index, lx, ly, along,
-      size: Math.min(1.0, 0.55 + speed * 0.15),
-      seed: Math.random() * 1000,
-    });
+    const sc = makeScar(o, x, y, speed);
+    if (this.scars.some((p) => p.index === index && Math.hypot(p.lx - sc.lx, p.ly - sc.ly) < 0.25)) return;
+    this.scars.push({ index, ...sc });
+  }
+
+  /** Scratches on the player's own car, kept in its body frame so they move with it. */
+  addPlayerScar(body, x, y, speed) {
+    const sc = makeScar(body, x, y, speed);
+    if (this.playerScars.some((p) => Math.hypot(p.lx - sc.lx, p.ly - sc.ly) < 0.25)) return;
+    this.playerScars.push(sc);
   }
 
   updateMarkers(dt) {
@@ -359,7 +389,7 @@ export class Game {
     drawScenery(ctx, sc, 'ground');
     drawTargets(ctx, sc.targets, this.targetStatus, this.time);
     if (this.settings.trail) drawPaths(ctx, this.trail, '#1c1c1c', 0.85, 0.14);
-    drawObstacles(ctx, sc);
+    drawObstacles(ctx, sc, this.brokenParked);
     drawScars(ctx, sc, this.scars);
 
     if (this.state !== 'success') {
@@ -377,7 +407,9 @@ export class Game {
       color: '#f4f5f7', steer: this.steer,
       brake: this.braking || (this.v === 0 && (this.input.up || this.input.down) && this.blockedDir !== 0),
       reverse: this.v < 0 || (this.v === 0 && this.lastDir < 0 && this.input.down),
+      broken: this.brokenLights,
     });
+    for (const ps of this.playerScars) drawScar(ctx, { x: body.x, y: body.y, angle: body.angle, w: CAR.length, h: CAR.width }, ps);
     drawScenery(ctx, sc, 'top'); // tree canopies above everything on the ground, including the player
     drawCrashMarkers(ctx, this.markers, this.time);
   }
