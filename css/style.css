@@ -40,6 +40,17 @@ kbd {
 }
 h1 { margin: 0; font-size: 28px; letter-spacing: -.01em; }
 .tagline { margin: 2px 0 0; color: var(--muted); }
+.menu-title { flex: 1 1 0; min-width: 0; }
+.header-links { margin-left: auto; display: flex; align-items: center; gap: 14px; flex: none; }
+.header-links a { color: var(--muted); text-decoration: none; }
+.header-links a:hover { color: var(--text); }
+.header-links .author { font-size: 14px; }
+.header-links .author:hover { text-decoration: underline; }
+.header-links .gh {
+  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  border: 1px solid #343b47; background: var(--card);
+}
+.header-links .gh:hover { background: var(--card-hi); }
 .menu-section { margin-bottom: 32px; }
 .section-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 h2 { margin: 0; font-size: 19px; }
@@ -216,6 +227,8 @@ h2 { margin: 0; font-size: 19px; }
 @keyframes pop { from { transform: scale(.9); opacity: 0; } }
 
 @media (max-width: 640px) {
+  .menu-header { flex-wrap: wrap; }
+  .header-links { width: 100%; margin-left: 0; justify-content: flex-end; }
   .bar-btn .lbl { display: none; }
   .stats { gap: 8px; font-size: 13.5px; }
   #scen-title { font-size: 14px; }
