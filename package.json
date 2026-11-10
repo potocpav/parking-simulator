@@ -1,0 +1,10 @@
+{
+  "name": "parking-simulator",
+  "private": true,
+  "type": "module",
+  "description": "Top-down car parking trainer. Static site, no build step.",
+  "scripts": {
+    "dev": "npx live-server --port=8000",
+    "test": "node --test tests/*.test.js"
+  }
+}
