@@ -26,7 +26,7 @@ Every scenario has its own URL, so you can send a link straight to one:
 | Pause | `Esc` or `P` | ⏸ in the top bar |
 | Reset | `R` | ⟲ in the top bar |
 
-- The wheels turn at a fixed rate while you hold a key and, when you let go, **return to straight as the car rolls**, in proportion to the distance driven (about 3 m from full lock). They stay put while the car is stopped.
+- The wheels turn at a fixed rate while you hold a key and, when you let go, **return to straight as the car rolls**, in proportion to the distance driven (about 4 m from full lock). They stay put while the car is stopped.
 - Speed is capped at parking pace: 18 km/h forward and 13 km/h in reverse. Pressing the opposite pedal brakes first.
 - Bumping into something stops the car and shows a red marker. That direction stays blocked; drive the other way to back out. Parked cars you hit keep scratch marks where you hit them until you reset.
 - To finish, put the car fully inside the dashed box, facing the chevrons, and **hold still for 1 second**. The car-park exit only needs you to drive into the finish box.

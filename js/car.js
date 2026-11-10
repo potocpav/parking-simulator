@@ -12,7 +12,7 @@ export const CAR = {
   rearOverhang: 0.78,
   maxSteer: 35 * D2R,  // front-wheel angle at full lock
   steerRate: 60 * D2R, // front-wheel angle change per second while a key is held
-  autoCenterPerMetre: 12 * D2R, // self-centring per metre driven with no steering input (~3 m from full lock)
+  autoCenterPerMetre: 9 * D2R, // self-centring per metre driven with no steering input (~4 m from full lock)
   maxFwd: 5.0,         // m/s (18 km/h)
   maxRev: 3.6,         // m/s (13 km/h)
   accel: 3.2,          // m/s²
