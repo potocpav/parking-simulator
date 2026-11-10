@@ -62,7 +62,8 @@ const edgeWalls = (W, H, t = 0.3) => [
 
 // ---------------------------------------------------------------- street (parallel)
 
-function streetScenario({ id, title, description, difficulty, gap, gapStart, seed }) {
+/** dropNeighbours: leave out the parked car directly in front of and behind the gap. */
+function streetScenario({ id, title, description, difficulty, gap, gapStart, dropNeighbours = false, seed }) {
   const rand = mulberry32(seed);
   const W = 40, H = 16;
   const gapEnd = gapStart + gap;
@@ -79,7 +80,7 @@ function streetScenario({ id, title, description, difficulty, gap, gapStart, see
 
   const obstacles = [
     curb(W / 2, 2.6, W, 0.2), curb(W / 2, 13.4, W, 0.2), ...edgeWalls(W, H),
-    ...streetCars(rand, W, gapStart, gapEnd),
+    ...streetCars(rand, W, gapStart, gapEnd, dropNeighbours),
   ];
   return {
     id, title, description, difficulty,
@@ -93,24 +94,27 @@ function streetScenario({ id, title, description, difficulty, gap, gapStart, see
 }
 
 /** Parked cars of the parallel-parking street: a packed right-hand row with one gap, and sparse cars opposite. */
-function streetCars(rand, W, gapStart, gapEnd) {
+function streetCars(rand, W, gapStart, gapEnd, dropNeighbours = false) {
   const laneY = 12.2;
   const obstacles = [];
   const onStreet = (c) => c.x - c.w / 2 >= 0 && c.x + c.w / 2 <= W; // drop cars sticking out past the ends
   // Cars behind the gap.
-  let pos = gapStart;
+  let pos = gapStart, first = true;
   while (pos > -3) {
     const c = parkedCar(rand, 0, laneY, 0, { jitter: 0.05, angJitter: 1.5 });
     c.x = pos - c.w / 2 - 0.05;
-    if (onStreet(c)) obstacles.push(c);
+    if (onStreet(c) && !(dropNeighbours && first)) obstacles.push(c);
+    first = false;
     pos -= c.w + 1.0 + rand() * 1.4;
   }
   // Cars ahead of the gap.
   pos = gapEnd;
+  first = true;
   while (pos < W + 3) {
     const c = parkedCar(rand, 0, laneY, 0, { jitter: 0.05, angJitter: 1.5 });
     c.x = pos + c.w / 2 + 0.05;
-    if (onStreet(c)) obstacles.push(c);
+    if (onStreet(c) && !(dropNeighbours && first)) obstacles.push(c);
+    first = false;
     pos += c.w + 1.0 + rand() * 1.4;
   }
   // A few cars parked on the opposite side.
@@ -352,7 +356,7 @@ function carParkScenario({ id, title, description, difficulty, mode, seed }) {
   for (const x of [19, 10]) scenery.push({ type: 'arrow', x, y: aisle2, angle: PI, len: 2.4 });
   scenery.push({ type: 'arrow', x: (lane[0] + lane[1]) / 2, y: yMid, angle: PI / 2, len: 2.4 });
   const ix = (islandR[0] + islandR[1]) / 2;
-  scenery.push(tree(2.0, yB + 2.6, 1.0), tree(4.0, yAisle2 - 2.6, 1.1), tree(ix, yB + 0.6, 0.75), tree(ix, yAisle2 - 0.6, 0.75));
+  scenery.push(tree(2.0, yB + 2.6, 1.0), tree(4.0, yAisle2 - 2.6, 1.1), tree(ix, yB + 0.6, 0.75), tree(ix, yMid, 0.75), tree(ix, yAisle2 - 0.6, 0.75));
 
   const obstacles = [
     { type: 'wall', x: LW / 2, y: 0.2, w: LW, h: 0.4, angle: 0 },
@@ -445,7 +449,7 @@ const ALL = [
   streetScenario({
     id: 'parallel-forward', title: 'Forward parallel', difficulty: 'Easy',
     description: 'Drive forward into the gap. You can run your wheels over the curb and sidewalk to swing in without reversing.',
-    gap: 8.0, gapStart: 16, seed: 11,
+    gap: 8.0, gapStart: 16, dropNeighbours: true, seed: 11,
   }),
   streetScenario({
     id: 'parallel-easy', title: 'Parallel parking', difficulty: 'Medium',
