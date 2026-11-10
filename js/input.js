@@ -12,7 +12,7 @@ export class Input {
     this.keys = new Set();
     this.touch = new Map(); // pointerId -> control
     this.enabled = false;
-    this.handlers = { pause: () => {}, reset: () => {}, any: () => {} };
+    this.handlers = { reset: () => {} };
 
     window.addEventListener('keydown', (e) => this.onKey(e, true));
     window.addEventListener('keyup', (e) => this.onKey(e, false));
@@ -23,18 +23,15 @@ export class Input {
 
   onKey(e, down) {
     if (!this.enabled) return;
-    if (e.target && /^(SELECT|INPUT|TEXTAREA)$/.test(e.target.tagName) && e.code !== 'Escape') return;
+    if (e.target && /^(SELECT|INPUT|TEXTAREA)$/.test(e.target.tagName) ) return;
     const ctl = KEYMAP[e.code];
     if (ctl) {
       e.preventDefault();
-      if (down) { this.keys.add(ctl); this.handlers.any(); } else this.keys.delete(ctl);
+      if (down) this.keys.add(ctl); else this.keys.delete(ctl);
       return;
     }
     if (!down) return;
-    if (e.code === 'Escape' || e.code === 'KeyP') {
-      e.preventDefault();
-      this.handlers.pause();
-    } else if (e.code === 'KeyR' && !e.ctrlKey && !e.metaKey) {
+    if (e.code === 'KeyR' && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
       this.handlers.reset();
     }
@@ -56,7 +53,6 @@ export class Input {
         e.preventDefault();
         try { btn.setPointerCapture(e.pointerId); } catch { /* ignore */ }
         btn.classList.add('active');
-        this.handlers.any();
         this.touch.set(e.pointerId, ctl);
       });
       btn.addEventListener('pointerup', (e) => { release(e); btn.classList.remove('active'); });

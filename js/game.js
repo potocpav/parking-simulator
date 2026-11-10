@@ -70,8 +70,8 @@ export class Game {
     this.braking = false;
     this.lastDir = 1;
     this.crashes = 0;
-    this.elapsed = 0;
-    this.started = false;
+    this.reversals = 0; // direction changes of actual movement
+    this.moveDir = 0;   // direction of the last actual movement (0 = not moved yet)
     this.markers = [];
     this.scars = []; // permanent scratches on bumped parked cars (cleared on reset)
     this.blockedDir = 0;
@@ -101,45 +101,12 @@ export class Game {
     cancelAnimationFrame(this.raf);
   }
 
-  pause() {
-    if (this.state === 'playing') {
-      this.state = 'paused';
-      this.input.clear();
-      this.hooks.onPause?.(true);
-    }
-  }
-
-  resume() {
-    if (this.state === 'paused') {
-      this.state = 'playing';
-      this.last = performance.now();
-      this.hooks.onPause?.(false);
-    }
-  }
-
-  togglePause() {
-    if (this.state === 'paused') this.resume();
-    else this.pause();
-  }
-
-  /** Tab/window in background: freeze simulation + timer silently (no pause overlay). */
-  setBackground(bg) {
-    if (bg === !!this.background) return;
-    this.background = bg;
-    this.input.clear();
-    if (!bg) { this.last = performance.now(); this.acc = 0; }
-  }
-
-  markStarted() {
-    if (this.state === 'playing') this.started = true;
-  }
-
   loop(now) {
     if (!this.running) return;
     const frameDt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
     this.time += frameDt;
-    if (this.state === 'playing' && !this.background) {
+    if (this.state === 'playing') {
       this.acc += frameDt;
       let n = 0;
       while (this.acc >= DT && n < 6) {
@@ -187,7 +154,6 @@ export class Game {
       this.v = Math.abs(this.v) <= d ? 0 : this.v - Math.sign(this.v) * d;
     }
     if (this.v !== 0) this.lastDir = Math.sign(this.v);
-    if (this.started) this.elapsed += dt;
 
     // Integrate + collide
     if (this.v !== 0) {
@@ -213,6 +179,9 @@ export class Game {
         this.hooks.onCrash?.(newCrash, impact);
       } else {
         this.pose = next;
+        const md = Math.sign(ds);
+        if (this.moveDir && md !== this.moveDir) this.reversals++;
+        this.moveDir = md;
         if (this.blockedDir) {
           if (Math.sign(ds) !== this.blockedDir) this.blockedDir = 0;
           else if ((this.distSinceBlock += Math.abs(ds)) > 0.5) this.blockedDir = 0;
@@ -285,7 +254,7 @@ export class Game {
       this.state = 'success';
       this.v = 0;
       this.input.clear();
-      this.hooks.onSuccess?.({ time: this.elapsed, crashes: this.crashes });
+      this.hooks.onSuccess?.({ reversals: this.reversals, crashes: this.crashes });
     }
   }
 

@@ -17,15 +17,27 @@ function write(key, value) {
   } catch { /* ignore */ }
 }
 
-/** { [scenarioId]: { time: seconds, crashes: n } } – presence means completed. */
+/**
+ * { [scenarioId]: { reversals, crashes } } – presence means completed.
+ * Records from the old time-based version have no `reversals`; they still count as completed.
+ */
 export function loadProgress() {
   const p = read('progress', {});
-  return p && typeof p === 'object' ? p : {};
+  if (!p || typeof p !== 'object') return {};
+  for (const r of Object.values(p)) if (r && typeof r.reversals !== 'number') r.reversals = null;
+  return p;
 }
 
+/** Fewer crashes first, then fewer reversals. */
 export function isBetter(a, b) {
   if (!b) return true;
-  return a.crashes < b.crashes || (a.crashes === b.crashes && a.time < b.time);
+  if (a.crashes !== b.crashes) return a.crashes < b.crashes;
+  return b.reversals === null || a.reversals < b.reversals;
+}
+
+/** Perfect = no crashes and no more reversals than the scenario's par. */
+export function isPerfect(rec, par) {
+  return !!rec && rec.crashes === 0 && rec.reversals !== null && rec.reversals <= par;
 }
 
 /** Store a finished run; returns { best, isNewBest, previous }. */
@@ -34,7 +46,7 @@ export function recordResult(id, result) {
   const previous = progress[id] || null;
   const isNewBest = isBetter(result, previous);
   if (isNewBest) {
-    progress[id] = { time: Math.round(result.time * 10) / 10, crashes: result.crashes };
+    progress[id] = { reversals: result.reversals, crashes: result.crashes };
     write('progress', progress);
   }
   return { best: progress[id], isNewBest, previous };

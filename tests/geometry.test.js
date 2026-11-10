@@ -59,3 +59,14 @@ for (const s of SCENARIOS) {
     }
   });
 }
+
+test('every scenario is in exactly one group and has a par', async () => {
+  const { GROUPS } = await import('../js/scenarios.js');
+  const ids = GROUPS.flatMap((g) => g.levels);
+  assert.equal(new Set(ids).size, ids.length, 'scenario listed in two groups');
+  assert.equal(ids.length, SCENARIOS.length);
+  for (const s of SCENARIOS) {
+    assert.ok(ids.includes(s.id), `${s.id} not in a group`);
+    assert.ok(Number.isInteger(s.par) && s.par >= 0, `${s.id} has no par`);
+  }
+});

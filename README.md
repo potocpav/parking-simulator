@@ -6,18 +6,20 @@ A top-down car parking trainer that runs in the browser. You steer a white hatch
 
 Every scenario has its own URL, so you can send a link straight to one:
 
-| Scenario | Link |
-|---|---|
-| Diagonal 45° | https://potocpav.github.io/parking-simulator/#/play/diagonal-45 |
-| Diagonal 60°, reverse | https://potocpav.github.io/parking-simulator/#/play/diagonal-60-reverse |
-| Two-point turn | https://potocpav.github.io/parking-simulator/#/play/two-point-turn |
-| Multi-point turn | https://potocpav.github.io/parking-simulator/#/play/multi-point-turn |
-| Reverse into a bay | https://potocpav.github.io/parking-simulator/#/play/perpendicular-reverse |
-| Nose-in bay | https://potocpav.github.io/parking-simulator/#/play/perpendicular-forward |
-| Parallel parking | https://potocpav.github.io/parking-simulator/#/play/parallel-easy |
-| Tight parallel | https://potocpav.github.io/parking-simulator/#/play/parallel-tight |
-| Leave the car park | https://potocpav.github.io/parking-simulator/#/play/carpark-exit |
-| Find a free bay | https://potocpav.github.io/parking-simulator/#/play/carpark-find-slot |
+| Group | Level | Par | Link |
+|---|---|---|---|
+| Diagonal parking | Diagonal 45° | 0 | https://potocpav.github.io/parking-simulator/#/play/diagonal-45 |
+| | Diagonal 60°, reverse | 1 | https://potocpav.github.io/parking-simulator/#/play/diagonal-60-reverse |
+| Turning around | Two-point turn | 2 | https://potocpav.github.io/parking-simulator/#/play/two-point-turn |
+| | Multi-point turn | 4 | https://potocpav.github.io/parking-simulator/#/play/multi-point-turn |
+| Perpendicular parking | Nose-in bay | 0 | https://potocpav.github.io/parking-simulator/#/play/perpendicular-forward |
+| | Reverse into a bay | 1 | https://potocpav.github.io/parking-simulator/#/play/perpendicular-reverse |
+| Parallel parking | Parallel parking | 1 | https://potocpav.github.io/parking-simulator/#/play/parallel-easy |
+| | Tight parallel | 3 | https://potocpav.github.io/parking-simulator/#/play/parallel-tight |
+| Car park | Leave the car park | 2 | https://potocpav.github.io/parking-simulator/#/play/carpark-exit |
+| | Find a free bay | 2 | https://potocpav.github.io/parking-simulator/#/play/carpark-find-slot |
+
+Groups have their own links too, for example https://potocpav.github.io/parking-simulator/#/group/parallel.
 
 ## Controls
 
@@ -25,9 +27,8 @@ Every scenario has its own URL, so you can send a link straight to one:
 |---|---|---|
 | Steer | `←` `→` (or `A` `D`) | ◀ ▶ (bottom left) |
 | Forward / reverse | `↑` `↓` (or `W` `S`) | ▲ D / ▼ R (bottom right) |
-| Pause | `Esc` or `P` | — |
 | Sound on/off | 🔊 in the top bar | 🔊 in the top bar |
-| Reset | `R` | ⟲ in the top bar |
+| Restart | `R` | ⟲ in the top bar |
 
 - The wheels turn at a fixed rate while you hold a key and, when you let go, **return to straight as the car rolls**, in proportion to the distance driven (about 4 m from full lock). They stay put while the car is stopped.
 - Speed is capped at parking pace: 18 km/h forward and 13 km/h in reverse. Pressing the opposite pedal brakes first.
@@ -36,9 +37,15 @@ Every scenario has its own URL, so you can send a link straight to one:
 
 The ⚙ menu lets you switch scenario and toggle the **trajectory** (predicted front-wheel paths, 1.5 m ahead and behind, for the current steering), **parking sensors**, **driven path**, **follow camera** (on by default on the big car-park maps), **on-screen controls** (on by default on touch devices) and **sound**.
 
-Sounds are synthesised in the browser with the Web Audio API, so there are no audio files. They are a soft engine hum whose pitch follows speed and throttle, parking-sensor beeps in four steps that match the on-screen bars (slow under 1.5 m, medium under 1.0 m, fast under 0.6 m, a solid tone under 0.3 m), and a thud when you hit something. Sound starts after your first key press or tap, which browsers require, and it is muted while the game is paused or in the background.
+Sounds are synthesised in the browser with the Web Audio API, so there are no audio files. They are a soft engine hum whose pitch follows speed and throttle, parking-sensor beeps in four steps that match the on-screen bars (slow under 1.5 m, medium under 1.0 m, fast under 0.6 m, a solid tone under 0.3 m), and a thud when you hit something. Sound starts after your first key press or tap, which browsers require, and it is muted while the page is in the background.
 
-Your progress stays in your browser's `localStorage`. For each finished scenario it saves your best result: fewest crashes, then fastest time.
+### Scoring
+
+There is no timer. Each run counts **reversals**, meaning how many times the car switches between moving forward and moving in reverse, and **crashes**. A level is completed (✓) when you finish it at all. It is perfect (★) when you finish with **0 crashes** and **no more reversals than the level's par**. The par values are estimates set by hand per scenario, `PAR` in `js/scenarios.js`. The top bar shows both counters during a run, with a ★ next to each one while it is still within the target.
+
+In the main menu, scenarios are grouped by type. Each group is a stacked card with one progress mark per level (○ not done, ✓ completed, ★ perfect). Click a group to open its levels.
+
+Your progress stays in your browser's `localStorage`. For each level it keeps your best result: fewest crashes, then fewest reversals. Results from the earlier time-based version still count as completed.
 
 ## Run locally
 
@@ -83,7 +90,6 @@ js/game.js        simulation loop, collisions, sensors, success detection, world
 js/car.js         car dimensions + kinematic bicycle model + path prediction
 js/collision.js   oriented-rectangle SAT, contact points, ray casts
 js/render.js      canvas drawing (scenery, cars, targets, overlays, camera)
-js/hud.js         parking-sensor widget
 js/input.js       keyboard + multi-touch controls
 js/audio.js       synthesised engine, sensor-beep and bump sounds
 js/menu.js        scenario cards with rendered previews
@@ -94,7 +100,7 @@ tests/            node:test unit tests
 
 ### Adding a scenario
 
-Add an entry to `SCENARIOS` in `js/scenarios.js`. The existing helpers (`streetScenario`, `lotScenario`, `angledScenario`, `carParkScenario`) cover most layouts. The raw shape is:
+Add an entry to the `ALL` list in `js/scenarios.js`, then add its id to a group in `GROUPS` and give it a par in `PAR`. The existing helpers (`streetScenario`, `lotScenario`, `angledScenario`, `carParkScenario`) cover most layouts. The raw shape is:
 
 ```js
 {

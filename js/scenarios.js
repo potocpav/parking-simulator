@@ -389,7 +389,7 @@ function carParkScenario({ id, title, description, difficulty, mode, seed }) {
 
 // ---------------------------------------------------------------- list
 
-export const SCENARIOS = [
+const ALL = [
   angledScenario({
     id: 'diagonal-45', title: 'Diagonal 45°', difficulty: 'Easy',
     description: 'Angled bays — turn in forward at 45°.',
@@ -441,6 +441,41 @@ export const SCENARIOS = [
     mode: 'find', seed: 202,
   }),
 ];
+
+// Minimum number of reversals for a perfect (★) run – estimated, not computed.
+const PAR = {
+  'diagonal-45': 0,
+  'diagonal-60-reverse': 1,
+  'two-point-turn': 2,
+  'multi-point-turn': 4,
+  'perpendicular-forward': 0,
+  'perpendicular-reverse': 1,
+  'parallel-easy': 1,
+  'parallel-tight': 3,
+  'carpark-exit': 2,
+  'carpark-find-slot': 2,
+};
+
+/** Scenarios grouped by theme; levels go from easier to harder. */
+export const GROUPS = [
+  { id: 'diagonal', title: 'Diagonal parking', description: 'Angled bays, forward and in reverse.', levels: ['diagonal-45', 'diagonal-60-reverse'] },
+  { id: 'turn-around', title: 'Turning around', description: 'Turn around on a street lined with parked cars.', levels: ['two-point-turn', 'multi-point-turn'] },
+  { id: 'perpendicular', title: 'Perpendicular parking', description: 'Bays at right angles to the aisle, nose-in and reversing.', levels: ['perpendicular-forward', 'perpendicular-reverse'] },
+  { id: 'parallel', title: 'Parallel parking', description: 'Reverse into a gap along the curb.', levels: ['parallel-easy', 'parallel-tight'] },
+  { id: 'car-park', title: 'Car park', description: 'Find your way around a tight, busy car park.', levels: ['carpark-exit', 'carpark-find-slot'] },
+];
+
+/** All scenarios in play order (group by group). */
+export const SCENARIOS = GROUPS.flatMap((g) => g.levels.map((id) => {
+  const s = ALL.find((x) => x.id === id);
+  s.group = g.id;
+  s.par = PAR[id];
+  return s;
+}));
+
+export function getGroup(id) {
+  return GROUPS.find((g) => g.id === id) || null;
+}
 
 export function getScenario(id) {
   return SCENARIOS.find((s) => s.id === id) || null;
