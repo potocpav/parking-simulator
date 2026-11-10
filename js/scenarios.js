@@ -508,7 +508,7 @@ const PAR = {
   'perpendicular-reverse': 1,
   'parallel-forward': 0,
   'parallel-easy': 1,
-  'parallel-tight': 3,
+  'parallel-tight': 2,
   'carpark-exit': 2,
   'carpark-find-slot': 2,
 };

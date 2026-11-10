@@ -79,10 +79,10 @@ function scrollCards(dir) {
 }
 
 els.groupOverlay.addEventListener('click', (e) => {
-  if (e.target === els.groupOverlay) location.hash = '#/';
+  if (e.target === els.groupOverlay) nav('#/');
 });
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !els.groupOverlay.hidden && !els.menuView.hidden) location.hash = '#/';
+  if (e.key === 'Escape' && !els.groupOverlay.hidden && !els.menuView.hidden) nav('#/');
 });
 
 // ------------------------------------------------------------ options
@@ -128,7 +128,7 @@ document.addEventListener('pointerdown', (e) => {
 
 const groupHash = () => (current ? `#/group/${current.group}` : '#/');
 const blurAfter = (fn) => (e) => { e.currentTarget.blur(); fn(); };
-$('#btn-menu').addEventListener('click', blurAfter(() => { location.hash = groupHash(); }));
+$('#btn-menu').addEventListener('click', blurAfter(() => nav(groupHash())));
 $('#btn-reset').addEventListener('click', blurAfter(() => restart()));
 $('#btn-sound').addEventListener('click', blurAfter(() => {
   settings.sound = !settings.sound;
@@ -157,10 +157,10 @@ if (document.fullscreenEnabled || document.webkitFullscreenEnabled) {
 }
 
 $('#success-restart').addEventListener('click', blurAfter(() => restart()));
-$('#success-menu').addEventListener('click', blurAfter(() => { location.hash = groupHash(); }));
+$('#success-menu').addEventListener('click', blurAfter(() => nav(groupHash())));
 $('#success-next').addEventListener('click', blurAfter(() => {
   const n = current && nextScenario(current.id);
-  if (n) location.hash = `#/play/${n.id}`;
+  if (n) nav(`#/play/${n.id}`);
 }));
 
 // Sound plays only in a running game while the page is in the foreground.
@@ -304,6 +304,71 @@ function showGame(id) {
   toast(`${s.description} Par: ${s.par} reversal${s.par === 1 ? '' : 's'}, no crashes.${keys}`);
 }
 
+// ------------------------------------------------------------ history
+//
+// The browser history always mirrors the hierarchy: main menu → group → level. Every entry stores
+// its chain of ancestors; navigating goes back to the deepest entry shared with the target and
+// pushes only what is missing, so the Back button always moves one level "up" and then leaves.
+
+/** Hashes from the main menu down to `hash`, e.g. ['#/', '#/group/parallel', '#/play/parallel-easy']. */
+function chainFor(hash) {
+  const p = hash.match(/^#\/play\/([\w-]+)/), g = hash.match(/^#\/group\/([\w-]+)/);
+  if (p && getScenario(p[1])) return ['#/', `#/group/${getScenario(p[1]).group}`, `#/play/${p[1]}`];
+  if (g && getGroup(g[1])) return ['#/', `#/group/${g[1]}`];
+  return ['#/'];
+}
+
+/** Write history entries for target[from..]; the first one replaces the current entry if asked. */
+function writeEntries(target, from, replaceFirst) {
+  for (let i = from; i < target.length; i++) {
+    const state = { chain: target.slice(0, i + 1) };
+    if (i === from && replaceFirst) history.replaceState(state, '', target[i]);
+    else history.pushState(state, '', target[i]);
+  }
+}
+
+let pending = null; // entries to write once an asynchronous history.go() has landed
+
+function nav(hash) {
+  const target = chainFor(hash);
+  const cur = history.state?.chain || chainFor(location.hash);
+  let k = 0;
+  while (k < cur.length && k < target.length && cur[k] === target[k]) k++;
+  const back = cur.length - k;
+  if (back === 0) {                      // going deeper: push
+    writeEntries(target, k, false);
+    route();
+  } else if (k === target.length) {      // going up: just go back
+    history.go(-back);                   // → popstate → route()
+  } else if (back === 1) {               // sideways at the same depth: replace
+    writeEntries(target, k, true);
+    route();
+  } else {                               // up and then down another branch
+    pending = { target, k };
+    history.go(-(back - 1));
+  }
+}
+
+window.addEventListener('popstate', () => {
+  if (pending) {
+    writeEntries(pending.target, pending.k, true);
+    pending = null;
+  } else if (!history.state?.chain) {
+    // A hash typed into the address bar: give the new entry its chain.
+    history.replaceState({ chain: chainFor(location.hash) }, '', location.hash || '#/');
+  }
+  route();
+});
+
+// In-app links (cards, back arrows, resume button) navigate through nav(); a modified click
+// (new tab / window) is left to the browser.
+document.addEventListener('click', (e) => {
+  const a = e.target.closest && e.target.closest('a[href^="#/"]');
+  if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  nav(a.getAttribute('href'));
+});
+
 function route() {
   const play = location.hash.match(/^#\/play\/([\w-]+)/);
   const grp = location.hash.match(/^#\/group\/([\w-]+)/);
@@ -312,12 +377,11 @@ function route() {
   } else if (grp && getGroup(grp[1])) {
     showMenu(getGroup(grp[1]));
   } else {
-    if (location.hash && location.hash !== '#/') history.replaceState(null, '', '#/');
+    if (location.hash !== '#/') history.replaceState({ chain: ['#/'] }, '', '#/');
     showMenu();
   }
 }
 
-window.addEventListener('hashchange', route);
 let resizeTimer = 0;
 window.addEventListener('resize', () => {
   if (!current) {
@@ -328,4 +392,12 @@ window.addEventListener('resize', () => {
     }, 150);
   }
 });
+
+// On first load (including a shared deep link) lay down the full chain, so Back from a level goes
+// to its group, then the main menu, then out of the site. A reload keeps the existing entries.
+{
+  const target = chainFor(location.hash);
+  const st = history.state?.chain;
+  if (!st || st.join() !== target.join()) writeEntries(target, 0, true);
+}
 route();

@@ -17,7 +17,7 @@ Every scenario has its own URL, so you can send a link straight to one:
 | | Reverse into a bay | 1 | https://potocpav.github.io/parking-simulator/#/play/perpendicular-reverse |
 | Parallel parking | Forward parallel | 0 | https://potocpav.github.io/parking-simulator/#/play/parallel-forward |
 | | Parallel parking | 1 | https://potocpav.github.io/parking-simulator/#/play/parallel-easy |
-| | Tight parallel | 3 | https://potocpav.github.io/parking-simulator/#/play/parallel-tight |
+| | Tight parallel | 2 | https://potocpav.github.io/parking-simulator/#/play/parallel-tight |
 | Car park | Leave the car park | 2 | https://potocpav.github.io/parking-simulator/#/play/carpark-exit |
 | | Find a free bay | 2 | https://potocpav.github.io/parking-simulator/#/play/carpark-find-slot |
 
