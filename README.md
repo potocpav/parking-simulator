@@ -10,11 +10,13 @@ Every scenario has its own URL, so you can send a link straight to one:
 |---|---|---|---|
 | Diagonal parking | Diagonal 45° | 0 | https://potocpav.github.io/parking-simulator/#/play/diagonal-45 |
 | | Diagonal 60°, reverse | 1 | https://potocpav.github.io/parking-simulator/#/play/diagonal-60-reverse |
-| Turning around | Two-point turn | 2 | https://potocpav.github.io/parking-simulator/#/play/two-point-turn |
+| Turning around | Turn around (empty street) | 0 | https://potocpav.github.io/parking-simulator/#/play/turn-around-empty |
+| | Two-point turn | 2 | https://potocpav.github.io/parking-simulator/#/play/two-point-turn |
 | | Multi-point turn | 4 | https://potocpav.github.io/parking-simulator/#/play/multi-point-turn |
 | Perpendicular parking | Nose-in bay | 0 | https://potocpav.github.io/parking-simulator/#/play/perpendicular-forward |
 | | Reverse into a bay | 1 | https://potocpav.github.io/parking-simulator/#/play/perpendicular-reverse |
-| Parallel parking | Parallel parking | 1 | https://potocpav.github.io/parking-simulator/#/play/parallel-easy |
+| Parallel parking | Forward parallel | 0 | https://potocpav.github.io/parking-simulator/#/play/parallel-forward |
+| | Parallel parking | 1 | https://potocpav.github.io/parking-simulator/#/play/parallel-easy |
 | | Tight parallel | 3 | https://potocpav.github.io/parking-simulator/#/play/parallel-tight |
 | Car park | Leave the car park | 2 | https://potocpav.github.io/parking-simulator/#/play/carpark-exit |
 | | Find a free bay | 2 | https://potocpav.github.io/parking-simulator/#/play/carpark-find-slot |
@@ -32,10 +34,11 @@ Groups have their own links too, for example https://potocpav.github.io/parking-
 
 - The wheels turn at a fixed rate while you hold a key and, when you let go, **return to straight as the car rolls**, in proportion to the distance driven (about 4 m from full lock). They stay put while the car is stopped.
 - Speed is capped at parking pace: 18 km/h forward and 13 km/h in reverse. Pressing the opposite pedal brakes first.
+- Curbs, sidewalks and grass islands can be driven over; each wheel thuds as it crosses a curb, but nothing else happens. Walls, parked cars, tree trunks and the map edges are solid.
 - Bumping into something stops the car and shows a red marker. That direction stays blocked; drive the other way to back out. Parked cars you hit keep scratch marks where you hit them until you reset.
 - To finish, put the car fully inside the dashed box, facing the chevrons, and **hold still for 1 second**. The car-park exit only needs you to drive into the finish box.
 
-The ⚙ menu lets you switch scenario and toggle the **trajectory** (predicted front-wheel paths, 1.5 m ahead and behind, for the current steering), **parking sensors**, **driven path**, **follow camera** (on by default on the big car-park maps), **on-screen controls** (on by default on touch devices) and **sound**.
+The camera follows the car and turns with it, so the car always points up the screen. The predicted front-wheel paths (1.5 m ahead and behind, for the current steering) are always shown. The ⚙ menu lets you toggle **parking sensors**, **driven path**, **on-screen controls** (on by default on touch devices) and **sound**.
 
 Sounds are synthesised in the browser with the Web Audio API, so there are no audio files. They are a soft engine hum whose pitch follows speed and throttle, parking-sensor beeps in four steps that match the on-screen bars (slow under 1.5 m, medium under 1.0 m, fast under 0.6 m, a solid tone under 0.3 m), and a thud when you hit something. Sound starts after your first key press or tap, which browsers require, and it is muted while the page is in the background.
 
@@ -43,9 +46,9 @@ Sounds are synthesised in the browser with the Web Audio API, so there are no au
 
 There is no timer. Each run counts **reversals**, meaning how many times the car switches between moving forward and moving in reverse, and **crashes**. A level is completed (✓) when you finish it at all. It is perfect (★) when you finish with **0 crashes** and **no more reversals than the level's par**. The par values are estimates set by hand per scenario, `PAR` in `js/scenarios.js`. The top bar shows both counters during a run, with a ★ next to each one while it is still within the target.
 
-In the main menu, scenarios are grouped by type. Each group is a stacked card with one progress mark per level (○ not done, ✓ completed, ★ perfect). Click a group to open its levels.
+In the main menu, scenarios are grouped by type. Each group is a stacked card with one progress mark per level (○ not done, ✓ completed, ★ perfect). Click a group to open its levels in a pop-up: a two-column grid of level cards, each showing its par (for example "Par: 1 reversal") and your best result. Go back with the ‹ button in its top-left corner, Esc, or a click outside.
 
-Your progress stays in your browser's `localStorage`. For each level it keeps your best result: fewest crashes, then fewest reversals. Results from the earlier time-based version still count as completed.
+Your progress stays in your browser's `localStorage`. For each level it keeps your best result: fewest crashes, then fewest reversals. Results from the earlier time-based version still count as completed. The menu header shows how many levels you've completed, your ★ count, and the total crashes across your best runs.
 
 ## Run locally
 
@@ -108,7 +111,6 @@ Add an entry to the `ALL` list in `js/scenarios.js`, then add its id to a group 
   title, description, difficulty, // shown on the card
   bounds: { x, y, w, h },         // world rectangle in metres; edges are invisible walls
   bg: '#5f8a43',                  // ground colour
-  largeMap: false,                // true → camera follows the car by default
   start: { x, y, angle },         // car body centre; angle in radians, 0 = facing right, +y is down
   targets: [{ x, y, w, h, angle, headings: [rad], tol: 7, requireStop: true, label }],
   obstacles: [{ type: 'car' | 'curb' | 'wall' | 'island' | 'hedge' | 'post', x, y, w, h, angle, color }],

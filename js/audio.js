@@ -199,4 +199,41 @@ export class Sound {
     src.start(t);
     src.stop(t + 0.16);
   }
+
+  /** Tyre-over-kerb sound: a soft thump with a tiny tick on contact. `speed` in m/s. */
+  curb(speed) {
+    if (!this.ctx || !this.active || !this.enabled) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    if (t - (this.lastCurb || 0) < 0.06) return; // wheels hitting together give one thud
+    this.lastCurb = t;
+    const vol = Math.min(0.45, 0.2 + speed / 10);
+    const out = (peak, attack, decay) => {
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(peak, t + attack);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+      g.connect(this.master);
+      return g;
+    };
+    const noise = (type, freq, q, peak, decay) => {
+      const src = ctx.createBufferSource();
+      src.buffer = this.noise;
+      const f = ctx.createBiquadFilter();
+      f.type = type;
+      f.frequency.value = freq;
+      f.Q.value = q;
+      src.connect(f).connect(out(peak, 0.004, decay));
+      src.start(t);
+      src.stop(t + decay + 0.02);
+    };
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(95, t);
+    o.frequency.exponentialRampToValueAtTime(58, t + 0.17);
+    o.connect(out(0.36 * vol, 0.012, 0.24));
+    o.start(t);
+    o.stop(t + 0.26);
+    noise('lowpass', 420, 0.7, 0.07 * vol, 0.1);   // muffled knock
+    noise('bandpass', 2600, 1.5, 0.035 * vol, 0.03); // tiny tick on contact
+  }
 }

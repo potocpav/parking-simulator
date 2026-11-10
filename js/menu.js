@@ -81,7 +81,7 @@ export function buildLevelCards(track, group, scenarios, progress) {
     const d = a.querySelector('.diff');
     d.textContent = s.difficulty;
     d.dataset.level = s.difficulty.toLowerCase();
-    a.querySelector('.par').textContent = `★ for 0 crashes and ≤ ${plural(s.par, 'reversal')}`;
+    a.querySelector('.par').textContent = `Par: ${plural(s.par, 'reversal')}`;
     a.querySelector('.best').textContent = best ? formatBest(best, s.par) : 'Not completed yet';
     const badge = a.querySelector('.badge');
     badge.hidden = !st;
@@ -103,5 +103,7 @@ export function renderThumbnails(track, scenarios) {
 export function progressSummary(scenarios, progress) {
   const done = scenarios.filter((s) => progress[s.id]).length;
   const stars = scenarios.filter((s) => isPerfect(progress[s.id], s.par)).length;
-  return `${done} / ${scenarios.length} completed · ${stars} ★`;
+  // Sum of crashes in the best run of each completed level.
+  const crashes = scenarios.reduce((n, s) => n + (progress[s.id]?.crashes || 0), 0);
+  return `${done} / ${scenarios.length} completed · ${stars} ★ · ${crashes} ${crashes === 1 ? 'crash' : 'crashes'}`;
 }

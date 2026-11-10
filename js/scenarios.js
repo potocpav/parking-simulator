@@ -5,7 +5,6 @@
 //   id, title, description, difficulty,
 //   bounds: {x, y, w, h}          – world rectangle in metres (edges act as invisible walls)
 //   bg: '#color'                  – ground colour outside drawn scenery
-//   largeMap: bool                – camera follows the car by default
 //   start: {x, y, angle}          – player body-centre pose
 //   targets: [{x, y, w, h, angle, headings: [rad], tol: deg, requireStop?, label?}]
 //   obstacles: [{type: car|curb|wall|island|hedge|post, x, y, w, h, angle, color?}]
@@ -55,6 +54,11 @@ const rect = (x, y, w, h, fill, extra = {}) => ({ type: 'rect', x, y, w, h, angl
 const line = (pts, color = C.paint, width = 0.12, dash = null) => ({ type: 'line', pts, color, width, dash });
 const tree = (x, y, r = 1.1) => ({ type: 'tree', x, y, r, layer: 'top' });
 const curb = (x, y, w, h, angle = 0) => ({ type: 'curb', x, y, w, h, angle });
+/** Walls along the top and bottom map edges (behind the sidewalks), like the car-park walls. */
+const edgeWalls = (W, H, t = 0.3) => [
+  { type: 'wall', x: W / 2, y: t / 2, w: W, h: t, angle: 0 },
+  { type: 'wall', x: W / 2, y: H - t / 2, w: W, h: t, angle: 0 },
+];
 
 // ---------------------------------------------------------------- street (parallel)
 
@@ -73,7 +77,10 @@ function streetScenario({ id, title, description, difficulty, gap, gapStart, see
   for (let x = 4; x < W; x += 9) scenery.push(tree(x + rand() * 2, 15.0, 1.0 + rand() * 0.2));
   for (let x = 2; x < W; x += 11) scenery.push(tree(x + rand() * 2, 1.0, 0.9 + rand() * 0.2));
 
-  const obstacles = [curb(W / 2, 2.6, W, 0.2), curb(W / 2, 13.4, W, 0.2), ...streetCars(rand, W, gapStart, gapEnd)];
+  const obstacles = [
+    curb(W / 2, 2.6, W, 0.2), curb(W / 2, 13.4, W, 0.2), ...edgeWalls(W, H),
+    ...streetCars(rand, W, gapStart, gapEnd),
+  ];
   return {
     id, title, description, difficulty,
     bounds: { x: 0, y: 0, w: W, h: H },
@@ -89,12 +96,13 @@ function streetScenario({ id, title, description, difficulty, gap, gapStart, see
 function streetCars(rand, W, gapStart, gapEnd) {
   const laneY = 12.2;
   const obstacles = [];
+  const onStreet = (c) => c.x - c.w / 2 >= 0 && c.x + c.w / 2 <= W; // drop cars sticking out past the ends
   // Cars behind the gap.
   let pos = gapStart;
   while (pos > -3) {
     const c = parkedCar(rand, 0, laneY, 0, { jitter: 0.05, angJitter: 1.5 });
     c.x = pos - c.w / 2 - 0.05;
-    obstacles.push(c);
+    if (onStreet(c)) obstacles.push(c);
     pos -= c.w + 1.0 + rand() * 1.4;
   }
   // Cars ahead of the gap.
@@ -102,12 +110,13 @@ function streetCars(rand, W, gapStart, gapEnd) {
   while (pos < W + 3) {
     const c = parkedCar(rand, 0, laneY, 0, { jitter: 0.05, angJitter: 1.5 });
     c.x = pos + c.w / 2 + 0.05;
-    obstacles.push(c);
+    if (onStreet(c)) obstacles.push(c);
     pos += c.w + 1.0 + rand() * 1.4;
   }
   // A few cars parked on the opposite side.
   for (let x = 3; x < W; x += 5.5 + rand() * 6) {
-    obstacles.push(parkedCar(rand, x, 3.8, PI, { jitter: 0.05, angJitter: 1.5 }));
+    const c = parkedCar(rand, x, 3.8, PI, { jitter: 0.05, angJitter: 1.5 });
+    if (onStreet(c)) obstacles.push(c);
   }
   return obstacles;
 }
@@ -119,23 +128,33 @@ function streetCars(rand, W, gapStart, gapEnd) {
  * gaps: { top: [[x0, x1], ...], bottom: [...] } – free curb space; elsewhere cars are packed with
  * `spacing` = [min, max] metres between them.
  */
-function turnAroundScenario({ id, title, description, difficulty, gaps, spacing, parallelLayout, seed }) {
+function turnAroundScenario({ id, title, description, difficulty, gaps = {}, spacing, parallelLayout, noCars = false, seed }) {
   const rand = mulberry32(seed);
-  const W = 40, H = 16;
+  // Cross-section: 2.5 m sidewalk, curb, [parking lane], two 3.1 m driving lanes, parking lane, curb,
+  // 2.5 m sidewalk. The empty street has no parking lane on the far (top) side, so it is narrower.
+  const W = 40;
+  const parkTop = noCars ? 0 : 2.2, parkBot = 2.2;
+  const road = parkTop + 6.2 + parkBot;
+  const curbTop = 2.6, curbBot = curbTop + 0.2 + road;
+  const H = curbBot + 0.1 + 2.5;
+  const mid = curbTop + 0.1 + parkTop + 3.1;          // centre line
+  const laneTop = mid - 1.55, laneBot = mid + 1.55;   // driving-lane centres
   const scenery = [
     rect(W / 2, 1.25, W, 2.5, C.sidewalk),
-    rect(W / 2, 8, W, 10.6, C.asphalt),
-    rect(W / 2, 14.75, W, 2.5, C.sidewalk),
-    line([[0, 8], [W, 8]], C.paint, 0.12, [3, 3]),
-    line([[0, 11.1], [W, 11.1]], 'rgba(236,239,241,0.55)', 0.1, [0.5, 0.5]),
-    line([[0, 4.9], [W, 4.9]], 'rgba(236,239,241,0.55)', 0.1, [0.5, 0.5]),
+    rect(W / 2, curbTop + 0.1 + road / 2, W, road, C.asphalt),
+    rect(W / 2, H - 1.25, W, 2.5, C.sidewalk),
+    line([[0, mid], [W, mid]], C.paint, 0.12, [3, 3]),
   ];
-  for (const x of [17, 31]) scenery.push({ type: 'arrow', x, y: 9.55, angle: 0, len: 2.4 });
-  for (const x of [22, 34]) scenery.push({ type: 'arrow', x, y: 6.45, angle: PI, len: 2.4 });
-  for (let x = 4; x < W; x += 9) scenery.push(tree(x + rand() * 2, 15.0, 1.0 + rand() * 0.2));
-  for (let x = 2; x < W; x += 11) scenery.push(tree(x + rand() * 2, 1.0, 0.9 + rand() * 0.2));
+  const parkLine = (y) => scenery.push(line([[0, y], [W, y]], 'rgba(236,239,241,0.55)', 0.1, [0.5, 0.5]));
+  if (parkTop) parkLine(mid - 3.1);
+  if (parkBot) parkLine(mid + 3.1);
+  for (const x of [17, 31]) scenery.push({ type: 'arrow', x, y: laneBot, angle: 0, len: 2.4 });
+  for (const x of [22, 34]) scenery.push({ type: 'arrow', x, y: laneTop, angle: PI, len: 2.4 });
+  const treeGap = noCars ? 1.5 : 1; // sparser trees on the empty street
+  for (let x = 4; x < W; x += 9 * treeGap) scenery.push(tree(x + rand() * 2, H - 1.0, 1.0 + rand() * 0.2));
+  for (let x = 2; x < W; x += 11 * treeGap) scenery.push(tree(x + rand() * 2, 1.0, 0.9 + rand() * 0.2));
 
-  const obstacles = [curb(W / 2, 2.6, W, 0.2), curb(W / 2, 13.4, W, 0.2)];
+  const obstacles = [curb(W / 2, curbTop, W, 0.2), curb(W / 2, curbBot, W, 0.2), ...edgeWalls(W, H)];
   const fillRow = (y, angle, rowGaps) => {
     let pos = -3;
     while (pos < W + 3) {
@@ -143,11 +162,13 @@ function turnAroundScenario({ id, title, description, difficulty, gaps, spacing,
       const g = rowGaps.find(([g0, g1]) => pos < g1 && pos + c.w > g0);
       if (g) { pos = g[1]; continue; }
       c.x = pos + c.w / 2;
-      obstacles.push(c);
+      if (pos >= 0 && pos + c.w <= W) obstacles.push(c); // only cars fully on the street
       pos += c.w + spacing[0] + rand() * (spacing[1] - spacing[0]);
     }
   };
-  if (parallelLayout) {
+  if (noCars) {
+    // empty street
+  } else if (parallelLayout) {
     // Same parked cars as the parallel-parking street (identical with the same seed).
     obstacles.push(...streetCars(rand, W, parallelLayout.gapStart, parallelLayout.gapStart + parallelLayout.gap));
   } else {
@@ -158,8 +179,8 @@ function turnAroundScenario({ id, title, description, difficulty, gaps, spacing,
     id, title, description, difficulty,
     bounds: { x: 0, y: 0, w: W, h: H },
     bg: C.grass,
-    start: { x: 5, y: 9.55, angle: 0 },
-    targets: [{ x: 5.5, y: 6.45, w: 9, h: 3.0, angle: 0, headings: [PI], tol: 12, requireStop: false }],
+    start: { x: 5, y: laneBot, angle: 0 },
+    targets: [{ x: 5.5, y: laneTop, w: 9, h: 3.0, angle: 0, headings: [PI], tol: 12, requireStop: false }],
     obstacles,
     scenery,
   };
@@ -174,7 +195,11 @@ function lotScenario({ id, title, description, difficulty, target, extraEmpty = 
     top: { y0: 2.2, cy: 4.7 },
     bottom: { y0: 13.7, cy: 16.2 },
   };
-  const scenery = [rect(W / 2, 10.45, W, 16.5, C.lot)];
+  const scenery = [
+    rect(W / 2, 10.45, W, 16.5, C.lot),
+    rect(W / 2, 1.0, W, 2.0, C.sidewalk),
+    rect(W / 2, (18.9 + H) / 2, W, H - 18.9, C.sidewalk),
+  ];
   for (const r of Object.values(rows)) {
     for (let i = 0; i <= count; i++) {
       const x = x0 + i * bw;
@@ -186,7 +211,7 @@ function lotScenario({ id, title, description, difficulty, target, extraEmpty = 
   for (let x = 3; x < W; x += 6.5) scenery.push(tree(x + rand() * 2, 20.0, 1.0));
   for (let x = 1; x < W; x += 7) scenery.push(tree(x + rand() * 2, 0.9, 0.8));
 
-  const obstacles = [curb(W / 2, 2.1, W, 0.2), curb(W / 2, 18.8, W, 0.2)];
+  const obstacles = [curb(W / 2, 2.1, W, 0.2), curb(W / 2, 18.8, W, 0.2), ...edgeWalls(W, H)];
   const empty = new Set([`${target.row}${target.index}`, ...extraEmpty]);
   for (const [name, r] of Object.entries(rows)) {
     for (let i = 0; i < count; i++) {
@@ -242,7 +267,11 @@ function angledScenario({ id, title, description, difficulty, alphaDeg, entry, t
   const bottom = makeRow(botEdge, -alpha, spacing / 2).slice(0, count - 1);
   bays.push(...top, ...bottom);
 
-  const scenery = [rect(W / 2, (topCurb + botCurb) / 2, W, botCurb - topCurb, C.lot)];
+  const scenery = [
+    rect(W / 2, (topCurb + botCurb) / 2, W, botCurb - topCurb, C.lot),
+    rect(W / 2, topCurb / 2, W, topCurb, C.sidewalk),
+    rect(W / 2, (botCurb + H) / 2, W, H - botCurb, C.sidewalk),
+  ];
   for (const b of bays) {
     const ux = Math.cos(b.angle), uy = Math.sin(b.angle);
     const nx = -uy, ny = ux;
@@ -255,7 +284,7 @@ function angledScenario({ id, title, description, difficulty, alphaDeg, entry, t
   scenery.push({ type: 'arrow', x: 28, y: (topEdge + botEdge) / 2, angle: 0, len: 2.4 });
   for (let x = 2; x < W; x += 7) scenery.push(tree(x + rand() * 2, H - 0.8, 0.9));
 
-  const obstacles = [curb(W / 2, topCurb, W, 0.2), curb(W / 2, botCurb, W, 0.2)];
+  const obstacles = [curb(W / 2, topCurb, W, 0.2), curb(W / 2, botCurb, W, 0.2), ...edgeWalls(W, H)];
   top.forEach((b, i) => {
     if (i === targetIndex) return;
     obstacles.push(parkedCar(rand, b.x, b.y, rand() < 0.8 ? b.angle : b.angle + PI));
@@ -289,7 +318,7 @@ function carParkScenario({ id, title, description, difficulty, mode, seed }) {
   const lane = [islandR[1], islandR[1] + aisle]; // narrow U-turn lane
   const colX = [lane[1], lane[1] + depth];   // column of bays along the right wall
   const LW = colX[1] + 0.4;                  // lot width incl. right wall
-  const X0 = -9;
+  const X0 = 0;
   const yA = 0.4, yAisle1 = yA + depth, yB = yAisle1 + aisle, yMid = yB + depth;
   const yAisle2 = yMid + depth, yC = yAisle2 + aisle, yBottom = yC + depth;
   const H = yBottom + 0.4;
@@ -299,18 +328,14 @@ function carParkScenario({ id, title, description, difficulty, mode, seed }) {
     B2: { y0: yMid, cy: yMid + depth / 2 },
     C: { y0: yC, cy: yC + depth / 2 },
   };
-  const entrance = [yAisle1, yB];    // aisle 1 opening in the left wall
-  const exit = [yAisle2, yC];        // aisle 2 opening in the left wall
-  const aisle1 = (entrance[0] + entrance[1]) / 2;
-  const aisle2 = (exit[0] + exit[1]) / 2;
+  const aisle1 = (yAisle1 + yB) / 2;   // centre line of aisle 1
+  const aisle2 = (yAisle2 + yC) / 2;   // centre line of aisle 2
   const bayX = (i) => bx0 + (i + 0.5) * bw;
   const colCount = Math.floor((yBottom - yA) / bw);
   const colY = (j) => yA + (j + 0.5) * bw;
 
   const scenery = [
     rect(LW / 2, H / 2, LW, H, C.lot),
-    rect(X0 / 2, aisle1, -X0, entrance[1] - entrance[0], C.asphalt),
-    rect(X0 / 2, aisle2, -X0, exit[1] - exit[0], C.asphalt),
   ];
   for (const r of Object.values(rows)) {
     for (let i = 0; i <= count; i++) {
@@ -326,25 +351,18 @@ function carParkScenario({ id, title, description, difficulty, mode, seed }) {
   for (const x of [10, 19]) scenery.push({ type: 'arrow', x, y: aisle1, angle: 0, len: 2.4 });
   for (const x of [19, 10]) scenery.push({ type: 'arrow', x, y: aisle2, angle: PI, len: 2.4 });
   scenery.push({ type: 'arrow', x: (lane[0] + lane[1]) / 2, y: yMid, angle: PI / 2, len: 2.4 });
-  scenery.push({ type: 'text', x: -4.5, y: aisle1, text: 'IN', size: 1.6, color: C.paint, angle: PI / 2 });
-  scenery.push({ type: 'text', x: 2.6, y: aisle2, text: 'EXIT', size: 1.4, color: C.paint, angle: -PI / 2 });
   const ix = (islandR[0] + islandR[1]) / 2;
-  scenery.push(tree(2.0, yB + 2.6, 1.0), tree(4.0, yAisle2 - 2.6, 1.1), tree(ix, yB + 2.4, 0.75), tree(ix, yAisle2 - 2.4, 0.75));
-  scenery.push(tree(-6, 2.5, 1.3), tree(-2.5, 1.5, 1.1), tree(-6.5, H - 2.3, 1.3), tree(-2.5, H - 1.4, 1.0), tree(-4.5, yMid, 1.2));
+  scenery.push(tree(2.0, yB + 2.6, 1.0), tree(4.0, yAisle2 - 2.6, 1.1), tree(ix, yB + 0.6, 0.75), tree(ix, yAisle2 - 0.6, 0.75));
 
   const obstacles = [
     { type: 'wall', x: LW / 2, y: 0.2, w: LW, h: 0.4, angle: 0 },
     { type: 'wall', x: LW / 2, y: H - 0.2, w: LW, h: 0.4, angle: 0 },
     { type: 'wall', x: LW - 0.2, y: H / 2, w: 0.4, h: H, angle: 0 },
-    { type: 'wall', x: 0.2, y: entrance[0] / 2, w: 0.4, h: entrance[0], angle: 0 },
-    { type: 'wall', x: 0.2, y: (entrance[1] + exit[0]) / 2, w: 0.4, h: exit[0] - entrance[1], angle: 0 },
-    { type: 'wall', x: 0.2, y: (exit[1] + H) / 2, w: 0.4, h: H - exit[1], angle: 0 },
+
     { type: 'island', x: (0.4 + bx0) / 2, y: yMid, w: bx0 - 0.4, h: 2 * depth - 0.2, angle: 0 },
     { type: 'island', x: ix, y: yMid, w: islandR[1] - islandR[0], h: 2 * depth - 0.2, angle: 0 },
-    { type: 'hedge', x: X0 / 2, y: (entrance[1] + exit[0]) / 2, w: -X0, h: exit[0] - entrance[1], angle: 0 },
-    { type: 'post', x: 0.2, y: entrance[1] - 0.3, w: 0.5, h: 0.5, angle: 0 },
-    { type: 'post', x: 0.2, y: exit[0] + 0.3, w: 0.5, h: 0.5, angle: 0 },
   ];
+  obstacles.push({ type: 'wall', x: 0.2, y: H / 2, w: 0.4, h: H, angle: 0 }); // left wall
 
   let start, targets;
   const empty = new Set();
@@ -352,9 +370,9 @@ function carParkScenario({ id, title, description, difficulty, mode, seed }) {
     empty.add('B1:1');               // the player's own bay
     empty.add('A:4'); empty.add('C:2'); empty.add('R:8');
     start = { x: bayX(1), y: rows.B1.cy, angle: -PI / 2 };
-    targets = [{
-      x: X0 + 4, y: aisle2, w: 6, h: 5.2, angle: 0, headings: [PI], tol: 20,
-      requireStop: false, label: 'FINISH',
+    targets = [{ // exit box at the far end of aisle 2
+      x: 3.2, y: aisle2, w: 5.4, h: aisle - 0.1, angle: 0, headings: [PI], tol: 20,
+      requireStop: false, label: 'EXIT',
     }];
   } else {
     const free = [['A', 5], ['B2', 2], ['C', 4]];
@@ -362,7 +380,7 @@ function carParkScenario({ id, title, description, difficulty, mode, seed }) {
       empty.add(`${row}:${i}`);
       return { x: bayX(i), y: rows[row].cy, w: bw, h: depth, angle: 0, headings: [PI / 2, -PI / 2], tol: 7 };
     });
-    start = { x: X0 + 3.5, y: aisle1, angle: 0 };
+    start = { x: 3.7, y: aisle1, angle: 0 }; // inside the car park, at the start of aisle 1
   }
   for (const [name, r] of Object.entries(rows)) {
     for (let i = 0; i < count; i++) {
@@ -379,7 +397,6 @@ function carParkScenario({ id, title, description, difficulty, mode, seed }) {
     id, title, description, difficulty,
     bounds: { x: X0, y: 0, w: LW - X0, h: H },
     bg: C.grass,
-    largeMap: true,
     start,
     targets,
     obstacles,
@@ -399,6 +416,11 @@ const ALL = [
     id: 'diagonal-60-reverse', title: 'Diagonal 60°, reverse', difficulty: 'Medium',
     description: 'Pass the free bay, then reverse into it at 60°.',
     alphaDeg: -120, entry: 'reverse', targetIndex: 5, seed: 37,
+  }),
+  turnAroundScenario({
+    id: 'turn-around-empty', title: 'Turn around', difficulty: 'Easy',
+    description: 'Turn around on an empty street and drive back to the box in the opposite lane. The sidewalks are fair game.',
+    noCars: true, seed: 23, // same street as "Two-point turn", without the parked cars
   }),
   turnAroundScenario({
     id: 'two-point-turn', title: 'Two-point turn', difficulty: 'Medium',
@@ -421,23 +443,28 @@ const ALL = [
     target: { row: 'bottom', index: 6, heading: PI / 2 }, extraEmpty: ['top1'], seed: 9,
   }),
   streetScenario({
-    id: 'parallel-easy', title: 'Parallel parking', difficulty: 'Easy',
-    description: 'Reverse into a generous gap between two cars along the curb.',
-    gap: 7.5, gapStart: 16, seed: 11,
+    id: 'parallel-forward', title: 'Forward parallel', difficulty: 'Easy',
+    description: 'Drive forward into the gap. You can run your wheels over the curb and sidewalk to swing in without reversing.',
+    gap: 8.0, gapStart: 16, seed: 11,
+  }),
+  streetScenario({
+    id: 'parallel-easy', title: 'Parallel parking', difficulty: 'Medium',
+    description: 'Reverse into the gap between two cars along the curb.',
+    gap: 7.0, gapStart: 16, seed: 11,
   }),
   streetScenario({
     id: 'parallel-tight', title: 'Tight parallel', difficulty: 'Hard',
     description: 'A gap only a little longer than your car. Expect a few shunts.',
-    gap: 5.8, gapStart: 17, seed: 23,
+    gap: 5.5, gapStart: 17, seed: 23,
   }),
   carParkScenario({
     id: 'carpark-exit', title: 'Leave the car park', difficulty: 'Medium',
-    description: 'Pull out of your bay, turn right, U-turn into the next aisle and drive out through the exit.',
+    description: 'Pull out of your bay, turn right, U-turn into the next aisle and drive to the exit box.',
     mode: 'exit', seed: 101,
   }),
   carParkScenario({
     id: 'carpark-find-slot', title: 'Find a free bay', difficulty: 'Medium',
-    description: 'Enter the busy car park and park in any of the three free bays.',
+    description: 'Find any of the three free bays in the busy car park and park in it.',
     mode: 'find', seed: 202,
   }),
 ];
@@ -446,10 +473,12 @@ const ALL = [
 const PAR = {
   'diagonal-45': 0,
   'diagonal-60-reverse': 1,
+  'turn-around-empty': 0,
   'two-point-turn': 2,
   'multi-point-turn': 4,
   'perpendicular-forward': 0,
   'perpendicular-reverse': 1,
+  'parallel-forward': 0,
   'parallel-easy': 1,
   'parallel-tight': 3,
   'carpark-exit': 2,
@@ -459,9 +488,9 @@ const PAR = {
 /** Scenarios grouped by theme; levels go from easier to harder. */
 export const GROUPS = [
   { id: 'diagonal', title: 'Diagonal parking', description: 'Angled bays, forward and in reverse.', levels: ['diagonal-45', 'diagonal-60-reverse'] },
-  { id: 'turn-around', title: 'Turning around', description: 'Turn around on a street lined with parked cars.', levels: ['two-point-turn', 'multi-point-turn'] },
+  { id: 'turn-around', title: 'Turning around', description: 'Turn around on a street lined with parked cars.', levels: ['turn-around-empty', 'two-point-turn', 'multi-point-turn'] },
   { id: 'perpendicular', title: 'Perpendicular parking', description: 'Bays at right angles to the aisle, nose-in and reversing.', levels: ['perpendicular-forward', 'perpendicular-reverse'] },
-  { id: 'parallel', title: 'Parallel parking', description: 'Reverse into a gap along the curb.', levels: ['parallel-easy', 'parallel-tight'] },
+  { id: 'parallel', title: 'Parallel parking', description: 'Park in a gap along the curb, forward and in reverse.', levels: ['parallel-forward', 'parallel-easy', 'parallel-tight'] },
   { id: 'car-park', title: 'Car park', description: 'Find your way around a tight, busy car park.', levels: ['carpark-exit', 'carpark-find-slot'] },
 ];
 

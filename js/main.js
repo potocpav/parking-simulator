@@ -16,8 +16,9 @@ const els = {
   gameView: $('#game-view'),
   track: $('#card-track'),
   summary: $('#progress-summary'),
-  menuBack: $('#menu-back'),
-  menuHeading: $('#menu-heading'),
+  resume: $('#resume-btn'),
+  groupOverlay: $('#group-overlay'),
+  levelGrid: $('#level-grid'),
   canvas: $('#world'),
   title: $('#scen-title'),
   rev: $('#stat-rev'),
@@ -26,7 +27,6 @@ const els = {
   crashes: $('#stat-crashes'),
   starCrash: $('#star-crash'),
   options: $('#options-panel'),
-  select: $('#scenario-select'),
   gear: $('#hud-gear'),
   speed: $('#hud-speed'),
   touch: $('#touch-controls'),
@@ -37,7 +37,6 @@ const els = {
 const settings = storage.loadSettings();
 const coarse = matchMedia('(pointer: coarse)').matches;
 if (settings.touch === null) settings.touch = coarse;
-if (settings.follow === null) settings.follow = coarse;
 
 const input = new Input();
 const sound = new Sound();
@@ -45,10 +44,12 @@ sound.setEnabled(settings.sound);
 input.bindTouch(els.touch);
 
 let current = null;
+let resumeId = null; // level left unfinished; its game state is kept so it can be resumed
 
 const game = new Game(els.canvas, input, {
   onFrame: (g) => { updateHud(g); syncSound(); sound.update(g); },
   onSuccess: showSuccess,
+  onCurb: (speed) => sound.curb(speed),
   onCrash: (isNew, impact) => {
     if (!isNew) return;
     sound.bump(impact);
@@ -77,30 +78,22 @@ function scrollCards(dir) {
   els.track.scrollBy({ left: dir * step, behavior: 'smooth' });
 }
 
-for (const g of GROUPS) {
-  const og = document.createElement('optgroup');
-  og.label = g.title;
-  for (const id of g.levels) {
-    const o = document.createElement('option');
-    o.value = id;
-    o.textContent = getScenario(id).title;
-    og.appendChild(o);
-  }
-  els.select.appendChild(og);
-}
-els.select.addEventListener('change', () => {
-  els.select.blur();
-  location.hash = `#/play/${els.select.value}`;
+els.groupOverlay.addEventListener('click', (e) => {
+  if (e.target === els.groupOverlay) location.hash = '#/';
+});
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !els.groupOverlay.hidden && !els.menuView.hidden) location.hash = '#/';
 });
 
 // ------------------------------------------------------------ options
 
-const OPTION_KEYS = ['trajectory', 'sensors', 'trail', 'follow', 'touch', 'sound'];
+
+const OPTION_KEYS = ['sensors', 'trail', 'touch', 'sound'];
 
 function syncOptions() {
   for (const k of OPTION_KEYS) {
     const cb = document.getElementById(`opt-${k}`);
-    cb.checked = k === 'follow' ? game.followCam : !!settings[k];
+    cb.checked = !!settings[k];
   }
   els.touch.hidden = !settings.touch;
   const sb = $('#btn-sound');
@@ -112,12 +105,7 @@ function syncOptions() {
 for (const k of OPTION_KEYS) {
   document.getElementById(`opt-${k}`).addEventListener('change', (e) => {
     const v = e.target.checked;
-    if (k === 'follow') {
-      if (current?.largeMap) settings.followLarge = v;
-      else settings.follow = v;
-    } else {
-      settings[k] = v;
-    }
+    settings[k] = v;
     storage.saveSettings(settings);
     sound.setEnabled(settings.sound);
     syncOptions();
@@ -218,7 +206,7 @@ function showSuccess(result) {
   $('#success-icon').classList.toggle('star', perfect);
   $('#success-title').textContent = perfect ? 'Perfect!' : 'Parked!';
   $('#success-rev').textContent = `${result.reversals}${revStar ? ' ★' : ''}`;
-  $('#success-par').textContent = `★ at ${current.par} or fewer`;
+  $('#success-par').textContent = `Par: ${current.par}`;
   $('#success-crashes').textContent = `${result.crashes}${crashStar ? ' ★' : ''}`;
   $('#success-best').textContent = formatBest(best, current.par);
   $('#success-newbest').hidden = !(isNewBest && previous);
@@ -239,10 +227,17 @@ function toast(text, ms = 4500) {
   els.toast.hidden = false;
   els.toast.classList.remove('fade');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => els.toast.classList.add('fade'), ms);
+  toastTimer = setTimeout(hideToast, ms);
 }
+function hideToast() {
+  clearTimeout(toastTimer);
+  els.toast.classList.add('fade');
+  toastTimer = setTimeout(() => { els.toast.hidden = true; }, 800); // after the fade-out
+}
+els.toast.addEventListener('pointerdown', (e) => { e.stopPropagation(); hideToast(); });
 
 function showMenu(group = null) {
+  if (current) resumeId = game.state === 'playing' ? current.id : null;
   current = null;
   sound.setActive(false);
   game.stop();
@@ -253,20 +248,41 @@ function showMenu(group = null) {
   els.successOverlay.hidden = true;
   els.options.hidden = true;
   const progress = storage.loadProgress();
+  const wasMenu = !els.menuView.hidden && els.track.childElementCount > 0;
+  const keepScroll = els.track.scrollLeft;
+  buildGroupCards(els.track, GROUPS, SCENARIOS, progress);
+  if (wasMenu) els.track.scrollLeft = keepScroll;
   if (group) {
-    buildLevelCards(els.track, group, SCENARIOS, progress);
-    els.menuHeading.textContent = group.title;
+    buildLevelCards(els.levelGrid, group, SCENARIOS, progress);
+    $('#group-title').textContent = group.title;
+    $('#group-desc').textContent = group.description;
+    const dots = els.track.querySelector(`.stack[data-group="${group.id}"] .progress-dots`);
+    $('#group-progress').innerHTML = dots ? dots.innerHTML : '';
     document.title = `${group.title} · Parking Trainer`;
   } else {
-    buildGroupCards(els.track, GROUPS, SCENARIOS, progress);
-    els.menuHeading.textContent = 'Scenarios';
     document.title = 'Parking Trainer';
   }
-  els.menuBack.hidden = !group;
-  els.menuView.classList.toggle('in-group', !!group);
+  els.groupOverlay.hidden = !group;
+  document.body.classList.toggle('modal-open', !!group);
+  const rs = resumeId && getScenario(resumeId);
+  els.resume.hidden = !rs;
+  if (rs) {
+    els.resume.href = `#/play/${rs.id}`;
+    $('#resume-title').textContent = rs.title;
+  }
   els.summary.textContent = progressSummary(SCENARIOS, progress);
-  els.track.scrollLeft = 0;
-  requestAnimationFrame(() => renderThumbnails(els.track, SCENARIOS));
+  if (!wasMenu && group) {
+    // Arriving from a game or a link: bring the group's stack into view behind the pop-up.
+    const stack = els.track.querySelector(`.stack[data-group="${group.id}"]`);
+    if (stack) els.track.scrollLeft = stack.offsetLeft - els.track.offsetLeft - 8;
+  }
+  requestAnimationFrame(() => {
+    renderThumbnails(els.track, SCENARIOS);
+    if (group) {
+      renderThumbnails(els.levelGrid, SCENARIOS);
+      els.levelGrid.scrollTop = 0;
+    }
+  });
 }
 
 function showGame(id) {
@@ -276,16 +292,19 @@ function showGame(id) {
   els.gameView.hidden = false;
   els.successOverlay.hidden = true;
   els.options.hidden = true;
+  els.groupOverlay.hidden = true;
+  document.body.classList.remove('modal-open');
   els.title.textContent = s.title;
-  els.select.value = s.id;
   document.title = `${s.title} · Parking Trainer`;
   input.enabled = true;
-  game.load(s, settings);
+  const resuming = resumeId === id && game.scenario === s && game.state === 'playing';
+  resumeId = null;
+  if (!resuming) game.load(s, settings);
   syncOptions();
   game.start();
+  if (resuming) return;
   const keys = settings.touch ? '' : ' · Arrows: drive & steer · R: restart';
-  const revs = s.par === 0 ? 'no reversals' : `at most ${s.par} reversal${s.par === 1 ? '' : 's'}`;
-  toast(`${s.description} ★: no crashes, ${revs}.${keys}`);
+  toast(`${s.description} Par: ${s.par} reversal${s.par === 1 ? '' : 's'}, no crashes.${keys}`);
 }
 
 function route() {
@@ -306,7 +325,10 @@ let resizeTimer = 0;
 window.addEventListener('resize', () => {
   if (!current) {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => renderThumbnails(els.track, SCENARIOS), 150);
+    resizeTimer = setTimeout(() => {
+      renderThumbnails(els.track, SCENARIOS);
+      if (!els.groupOverlay.hidden) renderThumbnails(els.levelGrid, SCENARIOS);
+    }, 150);
   }
 });
 route();

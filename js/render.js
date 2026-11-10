@@ -18,19 +18,16 @@ export function followZoom(W, H) {
   return Math.max(14, Math.min(42, Math.min(W, H) / 21));
 }
 
-/** Clamp a follow-camera centre so the view stays inside the bounds where possible. */
-export function clampCamera(cam, bounds, W, H) {
-  const hw = W / 2 / cam.ppm, hh = H / 2 / cam.ppm;
-  const clampAxis = (c, lo, size, half) =>
-    size <= 2 * half ? lo + size / 2 : Math.min(lo + size - half, Math.max(lo + half, c));
-  cam.cx = clampAxis(cam.cx, bounds.x, bounds.w, hw);
-  cam.cy = clampAxis(cam.cy, bounds.y, bounds.h, hh);
-  return cam;
-}
-
+/**
+ * cam: { cx, cy, ppm, rot = 0, ox = 0, oy = 0 } – world point (cx, cy) appears at screen
+ * (W/2 + ox, H/2 + oy); the world is rotated by `rot` around it.
+ */
 export function applyCamera(ctx, cam, W, H, dpr) {
-  const k = dpr * cam.ppm;
-  ctx.setTransform(k, 0, 0, k, dpr * (W / 2 - cam.cx * cam.ppm), dpr * (H / 2 - cam.cy * cam.ppm));
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.translate(W / 2 + (cam.ox || 0), H / 2 + (cam.oy || 0));
+  if (cam.rot) ctx.rotate(cam.rot);
+  ctx.scale(cam.ppm, cam.ppm);
+  ctx.translate(-cam.cx, -cam.cy);
 }
 
 // ---------------------------------------------------------------- helpers
@@ -558,6 +555,6 @@ export function renderPreview(canvas, scenario, startBody) {
   drawScenery(ctx, scenario, 'ground');
   drawTargets(ctx, scenario.targets);
   drawObstacles(ctx, scenario);
-  drawScenery(ctx, scenario, 'top');
   drawCar(ctx, { ...startBody, color: '#f4f5f7' });
+  drawScenery(ctx, scenario, 'top');
 }

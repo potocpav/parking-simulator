@@ -34,13 +34,16 @@ test('turning circle matches L / tan(delta)', () => {
 
 for (const s of SCENARIOS) {
   test(`scenario ${s.id} is consistent`, () => {
-    const obs = s.obstacles.map(toRect);
+    // Solid things only: curbs/islands are drivable; tree trunks (0.6 m) are solid.
+    const trunks = s.scenery.filter((t) => t.type === 'tree').map((t) => ({ type: 'tree', x: t.x, y: t.y, w: 0.6, h: 0.6 }));
+    const solid = [...s.obstacles.filter((o) => o.type !== 'curb' && o.type !== 'island'), ...trunks];
+    const obs = solid.map(toRect);
     const car = bodyRect(centerToRear(s.start));
-    obs.forEach((o, i) => assert.equal(rectsOverlap(car, o), false, `start overlaps obstacle ${i} (${s.obstacles[i].type})`));
+    obs.forEach((o, i) => assert.equal(rectsOverlap(car, o), false, `start overlaps obstacle ${i} (${solid[i].type})`));
     for (const t of s.targets) {
       const tr = toRect(t);
       obs.forEach((o, i) => {
-        if (s.obstacles[i].type === 'car') assert.equal(rectsOverlap(tr, o), false, `target overlaps car ${i}`);
+        if (solid[i].type === 'car' || solid[i].type === 'tree') assert.equal(rectsOverlap(tr, o), false, `target overlaps ${solid[i].type} ${i}`);
       });
       // a car centred in the target with an allowed heading must count as inside
       const pose = bodyRect(centerToRear({ x: t.x, y: t.y, angle: t.headings[0] }));
@@ -49,12 +52,12 @@ for (const s of SCENARIOS) {
         return [pose.x + a * pose.hw * ca - b * pose.hh * sa, pose.y + a * pose.hw * sa + b * pose.hh * ca];
       });
       assert.ok(c.every(([x, y]) => pointInRect(x, y, tr)), 'car does not fit target');
-      obs.forEach((o, i) => assert.equal(rectsOverlap(pose, o), false, `parked pose overlaps ${s.obstacles[i].type} ${i}`));
+      obs.forEach((o, i) => assert.equal(rectsOverlap(pose, o), false, `parked pose overlaps ${solid[i].type} ${i}`));
     }
-    const cars = s.obstacles.filter((o) => o.type === 'car').map(toRect);
+    const cars = solid.filter((o) => o.type === 'car' || o.type === 'tree').map(toRect);
     for (let i = 0; i < cars.length; i++) {
       for (let j = i + 1; j < cars.length; j++) {
-        assert.equal(rectsOverlap(cars[i], cars[j]), false, `parked cars ${i} and ${j} overlap`);
+        assert.equal(rectsOverlap(cars[i], cars[j]), false, `parked cars / tree trunks ${i} and ${j} overlap`);
       }
     }
   });

@@ -2,8 +2,8 @@
 import { CAR, advance, bodyRect, centerToRear, predictPath, wheelPositions, wrapAngle } from './car.js';
 import { contactPoint, corners, pointInRect, rayRect, rectsOverlap } from './collision.js';
 import {
-  applyCamera, clampCamera, drawCar, drawCrashMarkers, drawGround, drawObstacles, drawPaths, drawScars,
-  drawScenery, drawSensorArcs, drawTargets, fitCamera, followZoom, SENSOR_RANGE,
+  applyCamera, drawCar, drawCrashMarkers, drawGround, drawObstacles, drawPaths, drawScars,
+  drawScenery, drawSensorArcs, drawTargets, followZoom, SENSOR_RANGE,
 } from './render.js';
 
 const DT = 1 / 60;
@@ -13,6 +13,8 @@ const TRAIL_STEP = 0.1;
 const TRAIL_MAX = 8000;
 const PREDICT_DIST = 1.5;
 const TOP_BAR = 56;
+const TRUNK = 0.6;                         // tree trunk collision size (m)
+const DRIVABLE = new Set(['curb', 'island']); // obstacle types the car can drive over
 
 const toRect = (o) => ({ x: o.x, y: o.y, hw: o.w / 2, hh: o.h / 2, angle: o.angle || 0, type: o.type });
 
@@ -54,14 +56,22 @@ export class Game {
       { type: 'bound', x: b.x - t / 2, y: b.y + b.h / 2, w: t, h: b.h + 2 * t },
       { type: 'bound', x: b.x + b.w + t / 2, y: b.y + b.h / 2, w: t, h: b.h + 2 * t },
     ];
-    this.obstacles = [...scenario.obstacles, ...walls].map(toRect);
+    // Tree trunks are solid; the canopy is only drawn.
+    const trunks = scenario.scenery
+      .filter((s) => s.type === 'tree')
+      .map((t) => ({ type: 'tree', x: t.x, y: t.y, w: TRUNK, h: TRUNK }));
+    const all = [...scenario.obstacles, ...walls, ...trunks].map((o, i) => ({ ...toRect(o), idx: i }));
+    // Curbs and kerbed islands can be driven over (a wheel thuds on each curb it crosses).
+    this.obstacles = all.filter((o) => !DRIVABLE.has(o.type));
+    // Each curb stone's raised side (local ±y) faces away from the map centre: that's the sidewalk.
+    const cy = b.y + b.h / 2;
+    this.curbZones = all.filter((o) => DRIVABLE.has(o.type)).map((o) => ({
+      ...o, hw: o.hw + 0.02, hh: o.hh + 0.02, up: Math.sign(o.y - cy) || 1,
+    }));
     this.targets = scenario.targets.map(toRect);
     this.reset();
   }
 
-  get followCam() {
-    return this.scenario?.largeMap ? this.settings.followLarge : this.settings.follow;
-  }
 
   reset() {
     this.pose = centerToRear(this.scenario.start);
@@ -77,6 +87,8 @@ export class Game {
     this.blockedDir = 0;
     this.distSinceBlock = 0;
     this.trail = [wheelPositions(this.pose)];
+    this.wheelZones = wheelPositions(this.pose).map((w) => this.zonesAt(w));
+    this.wheelPrev = null;
     this.trailAcc = 0;
     this.hold = 0;
     this.targetStatus = {};
@@ -170,7 +182,7 @@ export class Game {
           const m = this.markers.find((mk) => Math.hypot(mk.x - x, mk.y - y) < 0.8);
           if (m) { m.life = 1; m.touching = true; }
           else this.markers.push({ x, y, life: 1, touching: true });
-          if (o.type === 'car') this.addScar(this.obstacles.indexOf(o), o, x, y, Math.abs(this.v));
+          if (o.type === 'car') this.addScar(o.idx, o, x, y, Math.abs(this.v));
         }
         this.blockedDir = dir;
         this.distSinceBlock = 0;
@@ -186,6 +198,7 @@ export class Game {
           if (Math.sign(ds) !== this.blockedDir) this.blockedDir = 0;
           else if ((this.distSinceBlock += Math.abs(ds)) > 0.5) this.blockedDir = 0;
         }
+        this.checkCurbs(Math.abs(this.v));
         this.trailAcc += Math.abs(ds);
         if (this.trailAcc >= TRAIL_STEP) {
           this.trailAcc = 0;
@@ -196,6 +209,34 @@ export class Game {
     }
 
     this.checkTargets(dt);
+  }
+
+  /** Indices of the curb zones containing a point. */
+  zonesAt([x, y]) {
+    const out = [];
+    this.curbZones.forEach((z, i) => { if (pointInRect(x, y, z)) out.push(i); });
+    return out;
+  }
+
+  /**
+   * A wheel thuds only when it climbs up: onto a curb stone from the road side, or onto an island.
+   * Dropping back down is silent.
+   */
+  checkCurbs(speed) {
+    const prev = this.wheelPrev || wheelPositions(this.pose);
+    const cur = wheelPositions(this.pose);
+    cur.forEach((w, wi) => {
+      const now = this.zonesAt(w), before = this.wheelZones[wi];
+      const climbed = now.some((zi) => {
+        if (before.includes(zi)) return false;
+        const z = this.curbZones[zi];
+        if (z.type === 'island') return true;
+        return (prev[wi][1] - z.y) * z.up < 0; // came from the road side of the curb
+      });
+      if (climbed) this.hooks.onCurb?.(speed, wi);
+      this.wheelZones[wi] = now;
+    });
+    this.wheelPrev = cur;
   }
 
   /** Record a scar on a parked car, in that car's local frame, snapped to the nearest body edge. */
@@ -288,29 +329,23 @@ export class Game {
     return { W, H, dpr };
   }
 
+  /** The camera follows the car's position and rotation: the car always points up the screen. */
   updateCamera(W, H, dt) {
-    const b = this.scenario.bounds;
-    if (!this.followCam) {
-      this.cam = fitCamera(b, W, H, TOP_BAR, 0);
-      this.cam.mode = 'static';
-      return;
-    }
     const body = bodyRect(this.pose);
-    const ppm = followZoom(W, H);
-    const look = this.v * 0.5;
-    const target = clampCamera({
-      ppm,
-      cx: body.x + Math.cos(body.angle) * look,
-      cy: body.y + Math.sin(body.angle) * look - TOP_BAR / 2 / ppm,
-    }, b, W, H);
-    if (!this.cam || this.cam.mode !== 'follow') {
-      this.cam = { ...target, mode: 'follow' };
-      return;
-    }
-    const k = Math.min(1, dt * 4);
-    this.cam.ppm = ppm;
-    this.cam.cx += (target.cx - this.cam.cx) * k;
-    this.cam.cy += (target.cy - this.cam.cy) * k;
+    const target = {
+      ppm: followZoom(W, H),
+      cx: body.x, cy: body.y,
+      rot: -body.angle - Math.PI / 2,
+      ox: 0, oy: TOP_BAR / 2 + H * 0.12, // car sits below centre so more is visible ahead
+    };
+    if (!this.cam) { this.cam = target; return; }
+    // Position locked to the car; rotation eased slightly so turning feels smooth.
+    this.cam.ppm = target.ppm;
+    this.cam.cx = target.cx;
+    this.cam.cy = target.cy;
+    this.cam.ox = target.ox;
+    this.cam.oy = target.oy;
+    this.cam.rot += wrapAngle(target.rot - this.cam.rot) * Math.min(1, dt * 8);
   }
 
   render(dt = 0) {
@@ -326,9 +361,8 @@ export class Game {
     if (this.settings.trail) drawPaths(ctx, this.trail, '#1c1c1c', 0.85, 0.14);
     drawObstacles(ctx, sc);
     drawScars(ctx, sc, this.scars);
-    drawScenery(ctx, sc, 'top');
 
-    if (this.settings.trajectory && this.state !== 'success') {
+    if (this.state !== 'success') {
       const fwd = predictPath(this.pose, this.steer, PREDICT_DIST);
       const rev = predictPath(this.pose, this.steer, -PREDICT_DIST);
       const fActive = this.lastDir >= 0;
@@ -344,6 +378,7 @@ export class Game {
       brake: this.braking || (this.v === 0 && (this.input.up || this.input.down) && this.blockedDir !== 0),
       reverse: this.v < 0 || (this.v === 0 && this.lastDir < 0 && this.input.down),
     });
+    drawScenery(ctx, sc, 'top'); // tree canopies above everything on the ground, including the player
     drawCrashMarkers(ctx, this.markers, this.time);
   }
 }

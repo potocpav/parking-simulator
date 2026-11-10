@@ -53,11 +53,8 @@ export function recordResult(id, result) {
 }
 
 const DEFAULT_SETTINGS = {
-  trajectory: true,
   sensors: true,
   trail: true,
-  follow: null,       // small maps (null = auto: on for touch devices)
-  followLarge: true,  // large car-park maps
   touch: null,        // null = auto-detect
   sound: true,
 };
