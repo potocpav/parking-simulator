@@ -138,6 +138,8 @@ export class Game {
     if (this.running) return;
     this.running = true;
     this.last = performance.now();
+    this.fpsStart = 0;
+    this.fpsFrames = 0;
     this.raf = requestAnimationFrame(this.loop);
   }
 
@@ -148,6 +150,14 @@ export class Game {
 
   loop(now) {
     if (!this.running) return;
+    // Frames per second, averaged over half-second windows.
+    this.fpsFrames = (this.fpsFrames || 0) + 1;
+    if (!this.fpsStart) this.fpsStart = now;
+    if (now - this.fpsStart >= 500) {
+      this.fps = Math.round((this.fpsFrames * 1000) / (now - this.fpsStart));
+      this.fpsFrames = 0;
+      this.fpsStart = now;
+    }
     const frameDt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
     this.time += frameDt;

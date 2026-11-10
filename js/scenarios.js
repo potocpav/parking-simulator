@@ -132,11 +132,11 @@ function streetCars(rand, W, gapStart, gapEnd, dropNeighbours = false) {
  * gaps: { top: [[x0, x1], ...], bottom: [...] } – free curb space; elsewhere cars are packed with
  * `spacing` = [min, max] metres between them.
  */
-function turnAroundScenario({ id, title, description, difficulty, gaps = {}, spacing, parallelLayout, noCars = false, seed }) {
+function turnAroundScenario({ id, title, description, difficulty, gaps = {}, spacing, parallelLayout, noCars = false, fitRows = false, length = 40, seed }) {
   const rand = mulberry32(seed);
   // Cross-section: 2.5 m sidewalk, curb, [parking lane], two 3.1 m driving lanes, parking lane, curb,
   // 2.5 m sidewalk. The empty street has no parking lane on the far (top) side, so it is narrower.
-  const W = 40;
+  const W = length;
   const parkTop = noCars ? 0 : 2.2, parkBot = 2.2;
   const road = parkTop + 6.2 + parkBot;
   const curbTop = 2.6, curbBot = curbTop + 0.2 + road;
@@ -152,8 +152,8 @@ function turnAroundScenario({ id, title, description, difficulty, gaps = {}, spa
   const parkLine = (y) => scenery.push(line([[0, y], [W, y]], 'rgba(236,239,241,0.55)', 0.1, [0.5, 0.5]));
   if (parkTop) parkLine(mid - 3.1);
   if (parkBot) parkLine(mid + 3.1);
-  for (const x of [17, 31]) scenery.push({ type: 'arrow', x, y: laneBot, angle: 0, len: 2.4 });
-  for (const x of [22, 34]) scenery.push({ type: 'arrow', x, y: laneTop, angle: PI, len: 2.4 });
+  for (const f of [0.43, 0.78]) scenery.push({ type: 'arrow', x: W * f, y: laneBot, angle: 0, len: 2.4 });
+  for (const f of [0.55, 0.85]) scenery.push({ type: 'arrow', x: W * f, y: laneTop, angle: PI, len: 2.4 });
   const treeGap = noCars ? 1.5 : 1; // sparser trees on the empty street
   for (let x = 4; x < W; x += 9 * treeGap) scenery.push(tree(x + rand() * 2, H - 1.0, 1.0 + rand() * 0.2));
   for (let x = 2; x < W; x += 11 * treeGap) scenery.push(tree(x + rand() * 2, 1.0, 0.9 + rand() * 0.2));
@@ -170,8 +170,32 @@ function turnAroundScenario({ id, title, description, difficulty, gaps = {}, spa
       pos += c.w + spacing[0] + rand() * (spacing[1] - spacing[0]);
     }
   };
+  // Row of cars spanning the whole curb end to end: as many cars as fit, gaps evened out to fill it.
+  const fitRow = (y, angle) => {
+    const L = W - 0.6, cars = [];
+    let natural = 0;
+    for (;;) {
+      const c = parkedCar(rand, 0, y, angle, { jitter: 0.05, angJitter: 1.5 });
+      const gap = spacing[0] + rand() * (spacing[1] - spacing[0]);
+      if (cars.length && natural + c.w / 2 > L) break; // stop at the car count closest to L
+      cars.push([c, gap]);
+      natural += c.w + gap;
+    }
+    const carLen = cars.reduce((n, [c]) => n + c.w, 0);
+    const gapSum = cars.slice(0, -1).reduce((n, [, g]) => n + g, 0);
+    const k = (L - carLen) / gapSum;
+    let pos = 0.3;
+    for (const [c, g] of cars) {
+      c.x = pos + c.w / 2;
+      obstacles.push(c);
+      pos += c.w + g * k;
+    }
+  };
   if (noCars) {
     // empty street
+  } else if (fitRows) {
+    fitRow(curbTop + 0.1 + parkTop / 2, PI);
+    fitRow(mid + 3.1 + parkBot / 2, 0);
   } else if (parallelLayout) {
     // Same parked cars as the parallel-parking street (identical with the same seed).
     obstacles.push(...streetCars(rand, W, parallelLayout.gapStart, parallelLayout.gapStart + parallelLayout.gap));
@@ -434,7 +458,7 @@ const ALL = [
   turnAroundScenario({
     id: 'multi-point-turn', title: 'Multi-point turn', difficulty: 'Hard',
     description: 'Turn around on a street lined with parked cars. The gaps are too small to use, so it takes several shunts.',
-    gaps: {}, spacing: [1.1, 1.6], seed: 43,
+    fitRows: true, length: 28.5, spacing: [1.1, 1.6], seed: 43,
   }),
   lotScenario({
     id: 'perpendicular-reverse', title: 'Reverse into a bay', difficulty: 'Medium',

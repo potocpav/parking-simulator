@@ -27,8 +27,7 @@ const els = {
   crashes: $('#stat-crashes'),
   starCrash: $('#star-crash'),
   options: $('#options-panel'),
-  gear: $('#hud-gear'),
-  speed: $('#hud-speed'),
+  fps: $('#hud-fps'),
   touch: $('#touch-controls'),
   successOverlay: $('#overlay-success'),
   toast: $('#toast'),
@@ -190,10 +189,7 @@ function updateHud(g) {
   els.starRev.hidden = g.reversals > current.par;
   setText(els.crashes, 'crashes', String(g.crashes));
   els.starCrash.hidden = g.crashes > 0;
-  const gear = g.v > 0.01 ? 'D' : g.v < -0.01 ? 'R' : g.lastDir < 0 ? 'R' : 'D';
-  setText(els.gear, 'gear', Math.abs(g.v) < 0.01 ? 'N' : gear);
-  els.gear.dataset.gear = Math.abs(g.v) < 0.01 ? 'N' : gear;
-  setText(els.speed, 'speed', `${(Math.abs(g.v) * 3.6).toFixed(0)} km/h`);
+  setText(els.fps, 'fps', g.fps ? String(g.fps) : '–');
 }
 
 // ------------------------------------------------------------ success

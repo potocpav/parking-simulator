@@ -225,11 +225,8 @@ body.modal-open { overflow: hidden; }
   position: absolute; top: 66px; right: 10px; z-index: 3;
   display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none;
 }
-#hud .readout { display: flex; align-items: center; gap: 10px; padding: 4px 12px; font-variant-numeric: tabular-nums; }
-#hud-gear { font-weight: 800; font-size: 18px; width: 1.2em; text-align: center; color: var(--muted); }
-#hud-gear[data-gear="D"] { color: var(--accent); }
-#hud-gear[data-gear="R"] { color: var(--warn); }
-#hud-speed { font-size: 14px; min-width: 56px; text-align: right; }
+#hud .readout { padding: 3px 10px; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+#hud-fps { display: inline-block; min-width: 2ch; text-align: right; color: var(--text); font-weight: 600; }
 
 /* touch controls */
 #touch-controls { position: absolute; inset: auto 0 0 0; z-index: 4; pointer-events: none; }
