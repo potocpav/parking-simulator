@@ -23,7 +23,8 @@ Every scenario has its own URL, so you can send a link straight to one:
 |---|---|---|
 | Steer | `←` `→` (or `A` `D`) | ◀ ▶ (bottom left) |
 | Forward / reverse | `↑` `↓` (or `W` `S`) | ▲ D / ▼ R (bottom right) |
-| Pause | `Esc` or `P` | ⏸ in the top bar |
+| Pause | `Esc` or `P` | — |
+| Sound on/off | 🔊 in the top bar | 🔊 in the top bar |
 | Reset | `R` | ⟲ in the top bar |
 
 - The wheels turn at a fixed rate while you hold a key and, when you let go, **return to straight as the car rolls**, in proportion to the distance driven (about 4 m from full lock). They stay put while the car is stopped.

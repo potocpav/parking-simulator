@@ -105,6 +105,9 @@ function syncOptions() {
   }
   els.sensorWrap.hidden = !settings.sensors;
   els.touch.hidden = !settings.touch;
+  const sb = $('#btn-sound');
+  sb.textContent = settings.sound ? '🔊' : '🔇';
+  sb.classList.toggle('off', !settings.sound);
   els.gameView.classList.toggle('touch-on', !!settings.touch);
 }
 
@@ -140,7 +143,12 @@ document.addEventListener('pointerdown', (e) => {
 const blurAfter = (fn) => (e) => { e.currentTarget.blur(); fn(); };
 $('#btn-menu').addEventListener('click', blurAfter(() => { location.hash = '#/'; }));
 $('#btn-reset').addEventListener('click', blurAfter(() => restart()));
-$('#btn-pause').addEventListener('click', blurAfter(() => game.togglePause()));
+$('#btn-sound').addEventListener('click', blurAfter(() => {
+  settings.sound = !settings.sound;
+  storage.saveSettings(settings);
+  sound.setEnabled(settings.sound);
+  syncOptions();
+}));
 $('#pause-resume').addEventListener('click', blurAfter(() => game.resume()));
 $('#pause-reset').addEventListener('click', blurAfter(() => restart()));
 $('#pause-menu').addEventListener('click', blurAfter(() => { location.hash = '#/'; }));
