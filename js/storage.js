@@ -56,6 +56,8 @@ const DEFAULT_SETTINGS = {
   sensors: true,
   trail: true,
   touch: null,        // null = auto-detect
+  hiRes: null,        // full pixel density; null = auto (off on touch devices)
+  cacheScene: true,   // draw static scenery from a pre-rendered bitmap (test: compare FPS)
   sound: true,
 };
 

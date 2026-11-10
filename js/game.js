@@ -2,7 +2,7 @@
 import { CAR, advance, bodyRect, centerToRear, predictPath, wheelPositions, wrapAngle } from './car.js';
 import { contactPoint, corners, pointInRect, rayRect, rectsOverlap } from './collision.js';
 import {
-  applyCamera, drawCar, drawCrashMarkers, drawGround, drawObstacles, drawPaths, drawScar, drawScars, lightPositions,
+  applyCamera, drawCar, drawCrashMarkers, drawGround, drawObstacles, drawPaths, drawScar, drawScars, lightPositions, buildLayer, drawLayer,
   drawScenery, drawSensorArcs, drawTargets, followZoom, SENSOR_RANGE,
 } from './render.js';
 
@@ -79,6 +79,7 @@ export class Game {
   load(scenario, settings) {
     this.scenario = scenario;
     this.settings = settings;
+    this.layer = null; // the static bitmap is per scenario
     const b = scenario.bounds, t = 2;
     const walls = [
       { type: 'bound', x: b.x + b.w / 2, y: b.y - t / 2, w: b.w + 2 * t, h: t },
@@ -117,6 +118,7 @@ export class Game {
     this.playerScars = []; // scratches on the player's car
     this.brokenLights = new Set();   // player's broken lights
     this.brokenParked = new Map();   // obstacle index → Set of broken light ids
+    this.obstaclesDirty = true;      // parked-car layer needs re-rendering (new scar / broken light)
     this.blockedDir = 0;
     this.distSinceBlock = 0;
     this.trail = [wheelPositions(this.pose)];
@@ -230,7 +232,9 @@ export class Game {
           breakLights(body, x, y, this.brokenLights);
           if (o.type === 'car') {
             if (!this.brokenParked.has(o.idx)) this.brokenParked.set(o.idx, new Set());
-            breakLights(o, x, y, this.brokenParked.get(o.idx));
+            const lights = this.brokenParked.get(o.idx), before = lights.size;
+            breakLights(o, x, y, lights);
+            if (lights.size !== before) this.obstaclesDirty = true;
           }
         }
         this.blockedDir = dir;
@@ -293,6 +297,7 @@ export class Game {
     const sc = makeScar(o, x, y, speed);
     if (this.scars.some((p) => p.index === index && Math.hypot(p.lx - sc.lx, p.ly - sc.ly) < 0.25)) return;
     this.scars.push({ index, ...sc });
+    this.obstaclesDirty = true;
   }
 
   /** Scratches on the player's own car, kept in its body frame so they move with it. */
@@ -360,7 +365,8 @@ export class Game {
   // ------------------------------------------------------------ rendering
 
   resize() {
-    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    // Full resolution uses the screen's pixel density (up to 3×); otherwise cap at 1.5× for speed.
+    const dpr = Math.min(this.settings.hiRes ? 3 : 1.5, window.devicePixelRatio || 1);
     const W = this.canvas.clientWidth, H = this.canvas.clientHeight;
     if (this.canvas.width !== Math.round(W * dpr) || this.canvas.height !== Math.round(H * dpr)) {
       this.canvas.width = Math.round(W * dpr);
@@ -392,15 +398,24 @@ export class Game {
     const { W, H, dpr } = this.resize();
     const ctx = this.ctx;
     this.updateCamera(W, H, dt);
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    applyCamera(ctx, this.cam, W, H, dpr);
     const sc = this.scenario;
-    drawGround(ctx, sc);
-    drawScenery(ctx, sc, 'ground');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = sc.bg;
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    applyCamera(ctx, this.cam, W, H, dpr);
+    const cached = this.settings.cacheScene;
+    if (cached) {
+      drawLayer(ctx, this.staticLayer(this.cam.ppm * dpr));
+    } else {
+      drawGround(ctx, sc);
+      drawScenery(ctx, sc, 'ground');
+    }
     drawTargets(ctx, sc.targets, this.targetStatus, this.time);
     if (this.settings.trail) drawPaths(ctx, this.trail, '#1c1c1c', 0.85, 0.14);
-    drawObstacles(ctx, sc, this.brokenParked);
-    drawScars(ctx, sc, this.scars);
+    if (!cached) {
+      drawObstacles(ctx, sc, this.brokenParked);
+      drawScars(ctx, sc, this.scars);
+    }
 
     if (this.state !== 'success') {
       const fwd = predictPath(this.pose, this.steer, PREDICT_DIST);
@@ -423,4 +438,26 @@ export class Game {
     drawScenery(ctx, sc, 'top'); // tree canopies above everything on the ground, including the player
     drawCrashMarkers(ctx, this.markers, this.time);
   }
+
+  /**
+   * Everything that doesn't move (ground, markings, curbs, walls, parked cars with their scars and
+   * broken lights) is drawn once into one bitmap that is reused every frame. Rebuilt when the
+   * resolution changes, or after a crash changes a parked car.
+   */
+  staticLayer(pxPerM) {
+    const key = pxPerM.toFixed(2);
+    if (!this.layer || this.layer.key !== key || this.obstaclesDirty) {
+      const sc = this.scenario;
+      this.layer = buildLayer(sc, pxPerM, (c) => {
+        drawGround(c, sc);
+        drawScenery(c, sc, 'ground');
+        drawObstacles(c, sc, this.brokenParked);
+        drawScars(c, sc, this.scars);
+      });
+      this.layer.key = key;
+      this.obstaclesDirty = false;
+    }
+    return this.layer;
+  }
+
 }

@@ -140,6 +140,29 @@ export function drawScenery(ctx, scenario, layer) {
   }
 }
 
+/**
+ * Pre-render something into an off-screen bitmap covering the scenario bounds (plus a margin),
+ * at `pxPerM` pixels per metre (capped so the bitmap stays within typical GPU texture limits).
+ */
+export function buildLayer(scenario, pxPerM, draw) {
+  const pad = 2, b = scenario.bounds;
+  const wM = b.w + 2 * pad, hM = b.h + 2 * pad;
+  const k = Math.min(pxPerM, 4096 / wM, 4096 / hM, Math.sqrt(16e6 / (wM * hM)));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(wM * k);
+  canvas.height = Math.ceil(hM * k);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(k, k);
+  ctx.translate(pad - b.x, pad - b.y);
+  draw(ctx);
+  return { canvas, x: b.x - pad, y: b.y - pad, w: wM, h: hM };
+}
+
+/** Draw a layer from buildLayer() in world coordinates (camera transform already applied). */
+export function drawLayer(ctx, layer) {
+  ctx.drawImage(layer.canvas, layer.x, layer.y, layer.w, layer.h);
+}
+
 export function drawGround(ctx, scenario) {
   const b = scenario.bounds;
   ctx.fillStyle = scenario.bg;

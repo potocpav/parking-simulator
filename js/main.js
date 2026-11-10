@@ -36,6 +36,7 @@ const els = {
 const settings = storage.loadSettings();
 const coarse = matchMedia('(pointer: coarse)').matches;
 if (settings.touch === null) settings.touch = coarse;
+if (settings.hiRes === null) settings.hiRes = !coarse; // phones default to the faster resolution
 
 const input = new Input();
 const sound = new Sound();
@@ -87,7 +88,7 @@ window.addEventListener('keydown', (e) => {
 // ------------------------------------------------------------ options
 
 
-const OPTION_KEYS = ['sensors', 'trail', 'touch', 'sound'];
+const OPTION_KEYS = ['sensors', 'trail', 'hiRes', 'cacheScene', 'touch', 'sound'];
 
 function syncOptions() {
   for (const k of OPTION_KEYS) {
